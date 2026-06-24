@@ -41,3 +41,21 @@ MAX_RECENT_SNAPSHOTS = 64                # cap loaded per market (INVARIANT: >> 
 
 # ── Cadence ──
 MAX_POSTS_PER_DAY = 8         # rate cap so the feed stays signal, not spam
+
+# ── Kalshi public API (read-only; no auth) ──
+KALSHI_API_HOST = "https://api.elections.kalshi.com/trade-api/v2"
+
+# ── Poller universe (allowlist + liquidity floor; tune from data) ──
+# NB: agriculture/food categories are intentionally excluded per project rules.
+PULSE_CATEGORIES = (
+    "Politics",
+    "Economics",
+    "Companies",
+    "Financials",
+    "Science and Technology",
+)
+MIN_MARKET_VOLUME_24H = 1000.0   # contracts traded in the last 24h
+
+# ── HTTP client resilience ──
+HTTP_TIMEOUT_SECONDS = 10.0
+HTTP_MAX_RETRIES = 3
