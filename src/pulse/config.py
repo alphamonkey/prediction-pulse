@@ -60,3 +60,18 @@ MIN_MARKET_VOLUME_24H = 100.0    # contracts traded in the last 24h (tunable; li
 # ── HTTP client resilience ──
 HTTP_TIMEOUT_SECONDS = 10.0
 HTTP_MAX_RETRIES = 3
+
+# ── Writer / persona ──
+PERSONAS_DIR = os.environ.get("PULSE_PERSONAS_DIR", "personas")
+PERSONA = os.environ.get("PULSE_PERSONA", "example")  # which persona to write as
+WRITER_MAX_TOKENS = 150          # a Bluesky post is short; cap cost + runaway
+BLUESKY_MAX_GRAPHEMES = 300      # Bluesky post length limit
+DRAFTS_PER_RUN = MAX_POSTS_PER_DAY  # cap events sent to the writer per draft cycle
+
+# Event selection weights (which detected events are most worth posting; tune from data).
+RULE_WEIGHTS = {
+    "milestone": 3.0,      # "it just crossed 50%" — most newsworthy
+    "odds_swing": 2.0,
+    "volume_spike": 1.5,
+    "new_market": 1.0,
+}

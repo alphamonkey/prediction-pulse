@@ -1,0 +1,9 @@
+# Example persona — replace with your own brand. The writer uses system_prompt.md (the voice);
+# the publisher (later) will use `channels`. Identity fields below describe the account.
+display_name = "Prediction Pulse"
+handle = "example.bsky.social"
+avatar = "avatar.png"
+bio = "Faceless, data-driven prediction-market moves. Not financial advice."
+
+# Platform accounts this persona posts to. Filled in / used by the publisher chunk.
+channels = []

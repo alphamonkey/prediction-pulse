@@ -48,6 +48,15 @@ CREATE TABLE IF NOT EXISTS posted_events (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_posted_market ON posted_events(venue, market_id);
+
+CREATE TABLE IF NOT EXISTS drafts (
+    event_dedup_key  TEXT PRIMARY KEY,
+    persona          TEXT NOT NULL,
+    text             TEXT NOT NULL,
+    media            TEXT,
+    status           TEXT NOT NULL DEFAULT 'draft',
+    created_at       TEXT NOT NULL
+);
 """
 
 
@@ -176,3 +185,68 @@ class Database:
             )
             self.conn.commit()
             return cur.rowcount > 0
+
+    # ── drafts ──
+
+    def insert_draft(self, draft) -> bool:
+        """Record a post draft. Returns True if newly inserted, False if already drafted."""
+        assert self.conn is not None
+        with self._lock:
+            cur = self.conn.execute(
+                """INSERT OR IGNORE INTO drafts
+                   (event_dedup_key, persona, text, media, status, created_at)
+                   VALUES (?, ?, ?, ?, 'draft', ?)""",
+                (
+                    draft.event_dedup_key, draft.persona, draft.text,
+                    json.dumps(draft.media), draft.created_at.isoformat(),
+                ),
+            )
+            self.conn.commit()
+            return cur.rowcount > 0
+
+    def has_draft(self, dedup_key: str) -> bool:
+        assert self.conn is not None
+        row = self.conn.execute(
+            "SELECT 1 FROM drafts WHERE event_dedup_key = ?", (dedup_key,)
+        ).fetchone()
+        return row is not None
+
+    def get_drafts(self, limit: int = 100) -> list[dict]:
+        assert self.conn is not None
+        rows = self.conn.execute(
+            "SELECT * FROM drafts ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_undrafted_events(self, limit: int = 200) -> list[Event]:
+        """Detected events (from posted_events) without a draft yet, newest first.
+
+        Reconstructs the Event from the stored columns; `meta` isn't persisted there, so it's
+        None (selection/writing rely on the stored `headline` + numeric fields).
+        """
+        assert self.conn is not None
+        rows = self.conn.execute(
+            """SELECT p.* FROM posted_events p
+               LEFT JOIN drafts d ON d.event_dedup_key = p.dedup_key
+               WHERE d.event_dedup_key IS NULL
+               ORDER BY p.created_at DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [self._row_to_event(r) for r in rows]
+
+    @staticmethod
+    def _row_to_event(row: sqlite3.Row) -> Event:
+        return Event(
+            rule=row["rule"],
+            venue=row["venue"],
+            market_id=row["market_id"],
+            ts=datetime.fromisoformat(row["ts"]),
+            value_kind=ValueKind.PROBABILITY,  # posted_events is probability-class for now
+            from_value=row["from_value"],
+            to_value=row["to_value"],
+            magnitude=row["magnitude"],
+            direction=row["direction"],
+            headline=row["headline"],
+            dedup_key=row["dedup_key"],
+            context=json.loads(row["context"]) if row["context"] else {},
+        )

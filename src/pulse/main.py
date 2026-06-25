@@ -1,7 +1,8 @@
 """CLI entry point.
 
-`pulse poll` runs one detect cycle against live Kalshi data (dryrun).
-`pulse run`  drives the same cycle on a cadence (dryrun), until stopped.
+`pulse poll`  runs one detect cycle against live Kalshi data (dryrun).
+`pulse run`   drives the same cycle on a cadence (dryrun), until stopped.
+`pulse draft` writes post drafts for the top recent events in a persona's voice (dryrun).
 """
 
 from __future__ import annotations
@@ -13,17 +14,21 @@ import signal
 import threading
 
 from pulse import config
+from pulse.drafter import draft_once
+from pulse.persona import load_persona
 from pulse.poller import PollJob
 from pulse.scheduler.interval import IntervalScheduler
 from pulse.store.db import Database
 from pulse.venue.kalshi import KalshiClient, KalshiSource
+from pulse.writer.base import Writer
+from pulse.writer.claude import ClaudeWriter
+from pulse.writer.template import TemplateWriter
 
 log = logging.getLogger("pulse")
 
 
 @contextlib.contextmanager
 def _poll_job():
-    """Open the db + Kalshi client, yield a PollJob, and close both on exit."""
     db = Database(config.DB_PATH)
     db.connect()
     try:
@@ -49,6 +54,29 @@ def _run_loop(interval: int, max_iterations: int) -> None:
         IntervalScheduler(job, interval, max_iterations=max_iterations).run(stop)
 
 
+def make_writer() -> Writer:
+    """ClaudeWriter when an API key is configured; the zero-cost template writer otherwise."""
+    if config.ANTHROPIC_API_KEY:
+        return ClaudeWriter()
+    log.warning("ANTHROPIC_API_KEY not set — using the template writer (no LLM).")
+    return TemplateWriter()
+
+
+def _run_draft(limit: int, persona_name: str) -> None:
+    persona = load_persona(persona_name)
+    writer = make_writer()
+    db = Database(config.DB_PATH)
+    db.connect()
+    try:
+        report = draft_once(db, writer, persona, limit=limit)
+    finally:
+        db.close()
+    log.info(
+        "draft complete (mode=%s, persona=%s, writer=%s): %d candidates, %d new drafts",
+        config.PULSE_MODE, persona.name, writer.name, report.candidates, report.drafted,
+    )
+
+
 def cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="pulse")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -58,6 +86,11 @@ def cli(argv: list[str] | None = None) -> None:
                        help="Seconds between cycles (default: %(default)s).")
     run_p.add_argument("--max-iterations", type=int, default=0,
                        help="Stop after N cycles; 0 = unlimited (default: 0).")
+    draft_p = sub.add_parser("draft", help="Write post drafts for top recent events (no publish).")
+    draft_p.add_argument("--limit", type=int, default=config.DRAFTS_PER_RUN,
+                         help="Max events to draft this run (default: %(default)s).")
+    draft_p.add_argument("--persona", default=config.PERSONA,
+                         help="Persona name under personas/ (default: %(default)s).")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -65,3 +98,5 @@ def cli(argv: list[str] | None = None) -> None:
         _run_poll()
     elif args.command == "run":
         _run_loop(args.interval, args.max_iterations)
+    elif args.command == "draft":
+        _run_draft(args.limit, args.persona)

@@ -91,3 +91,55 @@ def test_run_command_defaults_interval_from_config(monkeypatch):
 
     from pulse import config
     assert calls["interval"] == config.DEFAULT_INTERVAL_SECONDS
+
+
+from types import SimpleNamespace  # noqa: E402
+
+from pulse import config  # noqa: E402
+from pulse.drafter import DraftReport  # noqa: E402
+
+
+def _draft_fakes(monkeypatch, calls):
+    class FakeDB:
+        def __init__(self, *a, **k):
+            pass
+
+        def connect(self):
+            calls["connected"] = True
+
+        def close(self):
+            calls["closed"] = True
+
+    def fake_draft_once(db, writer, persona, *, limit):
+        calls["limit"] = limit
+        calls["persona"] = persona.name
+        calls["writer"] = writer.name
+        return DraftReport(candidates=3, drafted=2)
+
+    monkeypatch.setattr(main, "Database", FakeDB)
+    monkeypatch.setattr(main, "make_writer", lambda: SimpleNamespace(name="fake"))
+    monkeypatch.setattr(main, "load_persona", lambda name: SimpleNamespace(name=name))
+    monkeypatch.setattr(main, "draft_once", fake_draft_once)
+
+
+def test_draft_command_runs_pipeline(monkeypatch):
+    calls = {}
+    _draft_fakes(monkeypatch, calls)
+
+    main.cli(["draft", "--limit", "2", "--persona", "alpha"])
+
+    assert calls["connected"] is True
+    assert calls["writer"] == "fake"
+    assert calls["persona"] == "alpha"
+    assert calls["limit"] == 2
+    assert calls["closed"] is True
+
+
+def test_draft_command_defaults_from_config(monkeypatch):
+    calls = {}
+    _draft_fakes(monkeypatch, calls)
+
+    main.cli(["draft"])
+
+    assert calls["limit"] == config.DRAFTS_PER_RUN
+    assert calls["persona"] == config.PERSONA

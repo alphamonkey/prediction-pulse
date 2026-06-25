@@ -135,3 +135,41 @@ def test_connect_readonly_rejects_writes(db, tmp_path):
             ro.insert_snapshot(_snap(ts=_T + timedelta(minutes=1)))
     finally:
         ro.close()
+
+
+# ── drafts ──
+
+from pulse.writer.base import Draft  # noqa: E402
+
+
+def _draft(dedup_key="odds_swing:kalshi:KXTEST:2026-06-24", text="A punchy post."):
+    return Draft(event_dedup_key=dedup_key, persona="example", text=text)
+
+
+def test_insert_draft_is_idempotent(db):
+    assert db.has_draft("odds_swing:kalshi:KXTEST:2026-06-24") is False
+    assert db.insert_draft(_draft()) is True
+    assert db.has_draft("odds_swing:kalshi:KXTEST:2026-06-24") is True
+    assert db.insert_draft(_draft(text="different")) is False  # same event_dedup_key
+    rows = db.get_drafts()
+    assert len(rows) == 1
+    assert rows[0]["text"] == "A punchy post."  # first write wins
+
+
+def test_get_undrafted_events_excludes_drafted_and_reconstructs(db):
+    db.record_posted(_event(dedup_key="k1"))
+    db.record_posted(_event(dedup_key="k2"))
+    db.insert_draft(_draft(dedup_key="k1"))  # k1 now drafted
+    undrafted = db.get_undrafted_events(limit=10)
+    keys = {e.dedup_key for e in undrafted}
+    assert keys == {"k2"}
+    ev = undrafted[0]
+    assert ev.rule == "odds_swing"
+    assert ev.headline == "KXTEST: odds 40% -> 55%"
+    assert ev.market_id == "KXTEST"
+
+
+def test_get_undrafted_events_respects_limit(db):
+    for i in range(5):
+        db.record_posted(_event(dedup_key=f"k{i}"))
+    assert len(db.get_undrafted_events(limit=2)) == 2
