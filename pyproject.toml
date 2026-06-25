@@ -32,3 +32,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+    # vendor deprecation from starlette's TestClient import — not our code
+    "ignore:Using .httpx. with .starlette.testclient. is deprecated",
+]

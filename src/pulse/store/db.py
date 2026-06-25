@@ -218,6 +218,36 @@ class Database:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    # ── dashboard reads (read-only-safe) ──
+
+    def get_recent_events(self, limit: int = 20) -> list[dict]:
+        """The most recent detected events (from posted_events), newest first."""
+        assert self.conn is not None
+        rows = self.conn.execute(
+            """SELECT dedup_key, rule, venue, market_id, magnitude, direction,
+                      headline, created_at
+               FROM posted_events ORDER BY created_at DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def stats(self) -> dict:
+        """High-level pipeline counts for the dashboard."""
+        assert self.conn is not None
+        q = self.conn.execute
+        by_rule = {
+            r["rule"]: r["n"]
+            for r in q("SELECT rule, COUNT(*) n FROM posted_events GROUP BY rule ORDER BY n DESC")
+        }
+        return {
+            "snapshots": q("SELECT COUNT(*) FROM market_snapshots").fetchone()[0],
+            "markets_tracked": q("SELECT COUNT(DISTINCT market_id) FROM market_snapshots").fetchone()[0],
+            "events_total": q("SELECT COUNT(*) FROM posted_events").fetchone()[0],
+            "events_by_rule": by_rule,
+            "drafts": q("SELECT COUNT(*) FROM drafts").fetchone()[0],
+            "last_poll": q("SELECT MAX(ts) FROM market_snapshots").fetchone()[0],
+        }
+
     def get_undrafted_events(self, limit: int = 200) -> list[Event]:
         """Detected events (from posted_events) without a draft yet, newest first.
 

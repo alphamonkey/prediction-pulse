@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>prediction-pulse</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    body { background:#0b0f14; color:#d8dee9; }
+    .card { background:#131a22; border:1px solid #1f2933; }
+    th { font-weight:600; }
+    td, th { padding:.4rem .5rem; }
+    tbody tr { border-top:1px solid #1f2933; }
+    .mono { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <main class="max-w-6xl mx-auto p-6 space-y-6">
+
+    <header class="flex items-center justify-between flex-wrap gap-2">
+      <div>
+        <h1 class="text-xl font-semibold">prediction-pulse</h1>
+        <p class="text-slate-500 text-sm">read-only monitor · refreshes every 15s</p>
+      </div>
+      <div class="flex items-center gap-3 text-sm">
+        <span id="mode" class="px-2 py-1 rounded bg-slate-700 uppercase text-xs tracking-wide">–</span>
+        <span class="text-slate-500">last poll <span id="last-poll" class="mono">–</span></span>
+      </div>
+    </header>
+
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Markets tracked</div><div id="m-markets" class="text-2xl font-semibold mono">–</div></div>
+      <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Snapshots</div><div id="m-snapshots" class="text-2xl font-semibold mono">–</div></div>
+      <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Events detected</div><div id="m-events" class="text-2xl font-semibold mono">–</div></div>
+      <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Drafts written</div><div id="m-drafts" class="text-2xl font-semibold mono">–</div></div>
+    </section>
+
+    <section class="card rounded-xl p-4">
+      <h2 class="font-semibold mb-3">Events by rule</h2>
+      <canvas id="rule-chart" height="80"></canvas>
+    </section>
+
+    <section class="card rounded-xl p-4">
+      <h2 class="font-semibold mb-3">Recent detected events</h2>
+      <table class="w-full text-sm">
+        <thead class="text-slate-500 text-left"><tr><th>When</th><th>Rule</th><th>Market</th><th>Move</th><th>Headline</th></tr></thead>
+        <tbody id="events"></tbody>
+      </table>
+    </section>
+
+    <section class="card rounded-xl p-4">
+      <h2 class="font-semibold mb-3">Recent drafts</h2>
+      <table class="w-full text-sm">
+        <thead class="text-slate-500 text-left"><tr><th>When</th><th>Persona</th><th>Draft</th></tr></thead>
+        <tbody id="drafts"></tbody>
+      </table>
+    </section>
+
+    <p class="text-slate-600 text-xs text-center">dryrun — nothing is published</p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const f = (u) => fetch(u).then((r) => r.json());
+    const esc = (s) => (s ?? "").toString().replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    const t = (iso) => (iso ? new Date(iso).toLocaleString() : "–");
+
+    let chart;
+    function drawRuleChart(byRule) {
+      const labels = Object.keys(byRule);
+      const data = labels.map((k) => byRule[k]);
+      if (!chart) {
+        chart = new Chart($("rule-chart"), {
+          type: "bar",
+          data: { labels, datasets: [{ data, backgroundColor: "#3b82f6" }] },
+          options: {
+            indexAxis: "y",
+            plugins: { legend: { display: false } },
+            scales: { x: { ticks: { color: "#64748b" }, grid: { color: "#1f2933" } },
+                      y: { ticks: { color: "#94a3b8" }, grid: { display: false } } },
+          },
+        });
+      } else {
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = data;
+        chart.update();
+      }
+    }
+
+    async function refresh() {
+      try {
+        const s = await f("/api/stats");
+        $("mode").textContent = s.mode;
+        $("last-poll").textContent = t(s.last_poll);
+        $("m-markets").textContent = s.markets_tracked;
+        $("m-snapshots").textContent = s.snapshots;
+        $("m-events").textContent = s.events_total;
+        $("m-drafts").textContent = s.drafts;
+        drawRuleChart(s.events_by_rule || {});
+
+        const events = await f("/api/events?limit=20");
+        $("events").innerHTML = events.map((e) => {
+          const move = e.from_value != null ? "" : "";
+          const dir = e.direction ? ` ${e.direction}` : "";
+          return `<tr><td class="text-slate-500 mono whitespace-nowrap">${t(e.created_at)}</td>`
+            + `<td>${esc(e.rule)}</td><td class="text-slate-400">${esc(e.market_id)}</td>`
+            + `<td class="mono">${(e.magnitude ?? "").toString()}${dir}</td>`
+            + `<td>${esc(e.headline)}</td></tr>`;
+        }).join("");
+
+        const drafts = await f("/api/drafts?limit=20");
+        $("drafts").innerHTML = drafts.map((d) =>
+          `<tr><td class="text-slate-500 mono whitespace-nowrap">${t(d.created_at)}</td>`
+          + `<td class="text-slate-400">${esc(d.persona)}</td><td>${esc(d.text)}</td></tr>`
+        ).join("");
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 15000);
+  </script>
+</body>
+</html>

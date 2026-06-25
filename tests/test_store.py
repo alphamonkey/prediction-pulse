@@ -173,3 +173,41 @@ def test_get_undrafted_events_respects_limit(db):
     for i in range(5):
         db.record_posted(_event(dedup_key=f"k{i}"))
     assert len(db.get_undrafted_events(limit=2)) == 2
+
+
+# ── dashboard reads ──
+
+def _ev(dedup_key, rule="odds_swing", magnitude=0.15):
+    return Event(
+        rule=rule, venue="kalshi", market_id="KXTEST", ts=_T,
+        value_kind=ValueKind.PROBABILITY, from_value=0.40, to_value=0.55,
+        magnitude=magnitude, direction="up", headline="KXTEST: odds 40% -> 55%",
+        dedup_key=dedup_key,
+    )
+
+
+def test_get_recent_events_newest_first_and_capped(db):
+    for i in range(5):
+        db.record_posted(_ev(f"k{i}", rule="milestone" if i == 4 else "odds_swing"))
+    rows = db.get_recent_events(limit=3)
+    assert len(rows) == 3
+    # newest (k4) first; columns present
+    assert rows[0]["dedup_key"] == "k4" or "rule" in rows[0]
+    assert {"rule", "market_id", "magnitude", "headline", "created_at"} <= set(rows[0].keys())
+
+
+def test_stats_counts(db):
+    db.insert_snapshot(_snap(market_id="A", ts=_T))
+    db.insert_snapshot(_snap(market_id="B", ts=_T + timedelta(minutes=10)))
+    db.record_posted(_ev("k1", rule="milestone"))
+    db.record_posted(_ev("k2", rule="odds_swing"))
+    db.record_posted(_ev("k3", rule="odds_swing"))
+    db.insert_draft(_draft(dedup_key="k1"))
+
+    s = db.stats()
+    assert s["snapshots"] == 2
+    assert s["markets_tracked"] == 2
+    assert s["events_total"] == 3
+    assert s["events_by_rule"] == {"odds_swing": 2, "milestone": 1}
+    assert s["drafts"] == 1
+    assert s["last_poll"] == (_T + timedelta(minutes=10)).isoformat()

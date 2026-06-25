@@ -61,6 +61,10 @@ MIN_MARKET_VOLUME_24H = 100.0    # contracts traded in the last 24h (tunable; li
 HTTP_TIMEOUT_SECONDS = 10.0
 HTTP_MAX_RETRIES = 3
 
+# ── Dashboard (read-only) ──
+DASHBOARD_HOST = os.environ.get("PULSE_DASHBOARD_HOST", "127.0.0.1")
+DASHBOARD_PORT = int(os.environ.get("PULSE_DASHBOARD_PORT", "8440"))
+
 # ── Writer / persona ──
 PERSONAS_DIR = os.environ.get("PULSE_PERSONAS_DIR", "personas")
 PERSONA = os.environ.get("PULSE_PERSONA", "example")  # which persona to write as
