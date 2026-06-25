@@ -91,6 +91,11 @@ def cli(argv: list[str] | None = None) -> None:
                          help="Max events to draft this run (default: %(default)s).")
     draft_p.add_argument("--persona", default=config.PERSONA,
                          help="Persona name under personas/ (default: %(default)s).")
+    serve_p = sub.add_parser("serve", help="Run the read-only monitoring dashboard.")
+    serve_p.add_argument("--host", default=config.DASHBOARD_HOST,
+                         help="Bind host (default: %(default)s).")
+    serve_p.add_argument("--port", type=int, default=config.DASHBOARD_PORT,
+                         help="Bind port (default: %(default)s).")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -100,3 +105,7 @@ def cli(argv: list[str] | None = None) -> None:
         _run_loop(args.interval, args.max_iterations)
     elif args.command == "draft":
         _run_draft(args.limit, args.persona)
+    elif args.command == "serve":
+        from pulse.server.app import serve  # lazy: fastapi only needed for the dashboard
+        log.info("dashboard on http://%s:%d", args.host, args.port)
+        serve(args.host, args.port)

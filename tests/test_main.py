@@ -143,3 +143,24 @@ def test_draft_command_defaults_from_config(monkeypatch):
 
     assert calls["limit"] == config.DRAFTS_PER_RUN
     assert calls["persona"] == config.PERSONA
+
+
+def test_serve_command_invokes_server(monkeypatch):
+    calls = {}
+    import pulse.server.app as serverapp
+    monkeypatch.setattr(serverapp, "serve", lambda host, port: calls.update(host=host, port=port))
+
+    main.cli(["serve", "--host", "0.0.0.0", "--port", "9999"])
+
+    assert calls == {"host": "0.0.0.0", "port": 9999}
+
+
+def test_serve_command_defaults_from_config(monkeypatch):
+    calls = {}
+    import pulse.server.app as serverapp
+    monkeypatch.setattr(serverapp, "serve", lambda host, port: calls.update(host=host, port=port))
+
+    main.cli(["serve"])
+
+    assert calls["host"] == config.DASHBOARD_HOST
+    assert calls["port"] == config.DASHBOARD_PORT

@@ -1,0 +1,15 @@
+[Unit]
+Description=prediction-pulse dashboard (read-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/Projects/prediction-pulse
+ExecStart=/home/pi/Projects/prediction-pulse/.venv/bin/pulse serve --host 127.0.0.1 --port 8440
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
