@@ -54,7 +54,7 @@ PULSE_CATEGORIES = (
     "Financials",
     "Science and Technology",
 )
-MIN_MARKET_VOLUME_24H = 1000.0   # contracts traded in the last 24h
+MIN_MARKET_VOLUME_24H = 100.0    # contracts traded in the last 24h (tunable; live data shows tens-to-hundreds typical)
 
 # ── HTTP client resilience ──
 HTTP_TIMEOUT_SECONDS = 10.0

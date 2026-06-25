@@ -65,3 +65,19 @@ def test_maps_meta_fields():
     assert snap.meta.extra["event_ticker"] == "KXPRES-2028"
     assert snap.meta.extra["series_ticker"] == "KXPRES"
     assert snap.meta.extra["volume_24h"] == 999
+
+
+def test_volume_fp_field_preferred_over_volume():
+    """Live Kalshi API returns volume_fp, not volume — must map correctly."""
+    raw = _raw(volume_fp=13729.48)
+    del raw["volume"]  # simulate live API: no legacy volume field
+    snap = market_to_snapshot(raw, category="Politics", now=_NOW)
+    assert snap is not None
+    assert snap.volume == 13729.48
+
+
+def test_volume_legacy_field_still_works():
+    """volume (legacy) fallback must keep existing tests passing."""
+    snap = market_to_snapshot(_raw(volume=99999), category="Politics", now=_NOW)
+    assert snap is not None
+    assert snap.volume == 99999.0

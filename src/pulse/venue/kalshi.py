@@ -24,6 +24,18 @@ from pulse.models import MarketMeta, Snapshot, ValueKind
 VENUE = "kalshi"
 
 
+def _num(raw: dict, *keys: str) -> float:
+    """Return the first non-None numeric found under *keys*, else 0.0."""
+    for k in keys:
+        v = raw.get(k)
+        if v is not None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                pass
+    return 0.0
+
+
 def _price(raw: dict, cents_key: str, dollars_key: str) -> float | None:
     """A price in [0,1] from a `*_dollars` field (preferred) or integer-cents, else None."""
     d = raw.get(dollars_key)
@@ -80,7 +92,7 @@ def market_to_snapshot(raw: dict, category: str | None, now: datetime) -> Snapsh
         ts=now,
         value=value,
         value_kind=ValueKind.PROBABILITY,
-        volume=float(raw.get("volume") or 0.0),
+        volume=_num(raw, "volume_fp", "volume"),
         meta=meta,
     )
 
@@ -157,7 +169,7 @@ class KalshiSource:
             for market in event.get("markets") or []:
                 if market.get("status") != "active":
                     continue
-                if float(market.get("volume_24h") or 0.0) < self._min_volume_24h:
+                if _num(market, "volume_24h_fp", "volume_24h") < self._min_volume_24h:
                     continue
                 raw = {
                     **market,

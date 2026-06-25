@@ -57,3 +57,25 @@ def test_is_a_snapshot_source_with_venue():
     src = KalshiSource(FakeClient([]))
     assert src.venue == "kalshi"
     assert isinstance(src, SnapshotSource)
+
+
+def test_volume_floor_uses_volume_24h_fp():
+    """Live Kalshi API uses volume_24h_fp — floor must filter on that field."""
+    events = [_event("Politics", [
+        _market("KEEP", volume_24h_fp=5000),
+        _market("DROP", volume_24h_fp=10),
+    ])]
+    src = KalshiSource(FakeClient(events), categories={"Politics"}, min_volume_24h=1000)
+    ids = {s.market_id for s in src.fetch_snapshots(_NOW)}
+    assert ids == {"KEEP"}
+
+
+def test_volume_floor_legacy_volume_24h_still_works():
+    """volume_24h (legacy) fallback must keep existing tests passing."""
+    events = [_event("Politics", [
+        _market("KEEP", volume_24h=8000),
+        _market("DROP", volume_24h=5),
+    ])]
+    src = KalshiSource(FakeClient(events), categories={"Politics"}, min_volume_24h=1000)
+    ids = {s.market_id for s in src.fetch_snapshots(_NOW)}
+    assert ids == {"KEEP"}
