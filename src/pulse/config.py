@@ -41,6 +41,7 @@ MAX_RECENT_SNAPSHOTS = 64                # cap loaded per market (INVARIANT: >> 
 
 # ── Cadence ──
 MAX_POSTS_PER_DAY = 8         # rate cap so the feed stays signal, not spam
+DEFAULT_INTERVAL_SECONDS = 900  # `pulse run` poll cadence: 15 min
 
 # ── Kalshi public API (read-only; no auth) ──
 KALSHI_API_HOST = "https://api.elections.kalshi.com/trade-api/v2"

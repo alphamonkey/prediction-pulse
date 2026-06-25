@@ -1,0 +1,15 @@
+[Unit]
+Description=prediction-pulse market poller (dryrun)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/Projects/prediction-pulse
+ExecStart=/home/pi/Projects/prediction-pulse/.venv/bin/pulse run --interval 900
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
