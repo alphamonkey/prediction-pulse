@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS drafts (
 """
 
 
+# How long a writer waits for the lock before erroring (poller + drafter share the DB).
+BUSY_TIMEOUT_MS = 5000
+
+
 class Database:
     def __init__(self, path: str | Path) -> None:
         self.path = str(path)
@@ -70,6 +74,10 @@ class Database:
         self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
+        # Two writer processes (poller + drafter) share this DB; WAL serializes writers, so make
+        # a writer wait for the lock rather than erroring. Explicit so it doesn't depend on
+        # sqlite3.connect's implicit timeout default.
+        self.conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(_SCHEMA)
         self._migrate()

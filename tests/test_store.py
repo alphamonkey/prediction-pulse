@@ -211,3 +211,8 @@ def test_stats_counts(db):
     assert s["events_by_rule"] == {"odds_swing": 2, "milestone": 1}
     assert s["drafts"] == 1
     assert s["last_poll"] == (_T + timedelta(minutes=10)).isoformat()
+
+
+def test_connect_sets_busy_timeout(db):
+    # Two writer processes (poller + drafter) share the DB; writers must wait for the lock.
+    assert db.conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000

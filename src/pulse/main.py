@@ -2,7 +2,8 @@
 
 `pulse poll`  runs one detect cycle against live Kalshi data (dryrun).
 `pulse run`   drives the same cycle on a cadence (dryrun), until stopped.
-`pulse draft` writes post drafts for the top recent events in a persona's voice (dryrun).
+`pulse draft` writes post drafts for the top recent events in a persona's voice (dryrun);
+              with `--interval N` it drafts on a cadence until stopped.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import signal
 import threading
 
 from pulse import config
-from pulse.drafter import draft_once
+from pulse.drafter import DraftJob, draft_once
 from pulse.persona import load_persona
 from pulse.poller import PollJob
 from pulse.scheduler.interval import IntervalScheduler
@@ -46,12 +47,17 @@ def _run_poll() -> None:
         job.run()
 
 
-def _run_loop(interval: int, max_iterations: int) -> None:
+def _run_scheduled(job, interval: int, max_iterations: int) -> None:
+    """Drive any Job on a cadence with graceful SIGINT/SIGTERM shutdown."""
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
+    IntervalScheduler(job, interval, max_iterations=max_iterations).run(stop)
+
+
+def _run_loop(interval: int, max_iterations: int) -> None:
     with _poll_job() as job:
-        IntervalScheduler(job, interval, max_iterations=max_iterations).run(stop)
+        _run_scheduled(job, interval, max_iterations)
 
 
 def make_writer() -> Writer:
@@ -62,19 +68,24 @@ def make_writer() -> Writer:
     return TemplateWriter()
 
 
-def _run_draft(limit: int, persona_name: str) -> None:
+def _run_draft(limit: int, persona_name: str, interval: int, max_iterations: int) -> None:
     persona = load_persona(persona_name)
     writer = make_writer()
     db = Database(config.DB_PATH)
     db.connect()
     try:
-        report = draft_once(db, writer, persona, limit=limit)
+        if interval > 0:
+            log.info("drafting every %ds (persona=%s, writer=%s, mode=%s)",
+                     interval, persona.name, writer.name, config.PULSE_MODE)
+            _run_scheduled(DraftJob(db, writer, persona, limit=limit), interval, max_iterations)
+        else:
+            report = draft_once(db, writer, persona, limit=limit)
+            log.info(
+                "draft complete (mode=%s, persona=%s, writer=%s): %d candidates, %d new drafts",
+                config.PULSE_MODE, persona.name, writer.name, report.candidates, report.drafted,
+            )
     finally:
         db.close()
-    log.info(
-        "draft complete (mode=%s, persona=%s, writer=%s): %d candidates, %d new drafts",
-        config.PULSE_MODE, persona.name, writer.name, report.candidates, report.drafted,
-    )
 
 
 def cli(argv: list[str] | None = None) -> None:
@@ -91,6 +102,10 @@ def cli(argv: list[str] | None = None) -> None:
                          help="Max events to draft this run (default: %(default)s).")
     draft_p.add_argument("--persona", default=config.PERSONA,
                          help="Persona name under personas/ (default: %(default)s).")
+    draft_p.add_argument("--interval", type=int, default=0,
+                         help="Run on a cadence (seconds); 0 = one-shot (default: 0).")
+    draft_p.add_argument("--max-iterations", type=int, default=0,
+                         help="With --interval, stop after N cycles; 0 = unlimited (default: 0).")
     serve_p = sub.add_parser("serve", help="Run the read-only monitoring dashboard.")
     serve_p.add_argument("--host", default=config.DASHBOARD_HOST,
                          help="Bind host (default: %(default)s).")
@@ -104,7 +119,7 @@ def cli(argv: list[str] | None = None) -> None:
     elif args.command == "run":
         _run_loop(args.interval, args.max_iterations)
     elif args.command == "draft":
-        _run_draft(args.limit, args.persona)
+        _run_draft(args.limit, args.persona, args.interval, args.max_iterations)
     elif args.command == "serve":
         from pulse.server.app import serve  # lazy: fastapi only needed for the dashboard
         log.info("dashboard on http://%s:%d", args.host, args.port)

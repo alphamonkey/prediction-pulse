@@ -164,3 +164,47 @@ def test_serve_command_defaults_from_config(monkeypatch):
 
     assert calls["host"] == config.DASHBOARD_HOST
     assert calls["port"] == config.DASHBOARD_PORT
+
+
+def test_draft_loop_drives_scheduler(monkeypatch):
+    calls = {}
+    _draft_fakes(monkeypatch, calls)  # patches Database, make_writer, load_persona, draft_once
+
+    from pulse.drafter import DraftJob
+
+    class FakeScheduler:
+        def __init__(self, job, interval_seconds, *, max_iterations=0):
+            calls["job_name"] = job.name
+            calls["is_draftjob"] = isinstance(job, DraftJob)
+            calls["interval"] = interval_seconds
+            calls["max_iterations"] = max_iterations
+
+        def run(self, stop=None):
+            calls["scheduler_ran"] = True
+
+    monkeypatch.setattr(main, "IntervalScheduler", FakeScheduler)
+
+    main.cli(["draft", "--interval", "3600", "--max-iterations", "1"])
+
+    assert calls["job_name"] == "draft"
+    assert calls["is_draftjob"] is True
+    assert calls["interval"] == 3600
+    assert calls["max_iterations"] == 1
+    assert calls["scheduler_ran"] is True
+    assert calls["closed"] is True
+
+
+def test_draft_without_interval_stays_one_shot(monkeypatch):
+    calls = {}
+    _draft_fakes(monkeypatch, calls)
+
+    class BoomScheduler:
+        def __init__(self, *a, **k):
+            raise AssertionError("scheduler must not run for a one-shot draft")
+
+    monkeypatch.setattr(main, "IntervalScheduler", BoomScheduler)
+
+    main.cli(["draft", "--limit", "1"])  # no --interval -> one-shot
+
+    assert calls["limit"] == 1   # draft_once was called directly (one-shot path)
+    assert calls["closed"] is True
