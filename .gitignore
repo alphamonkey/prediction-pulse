@@ -25,6 +25,7 @@ node_modules/
 
 # Claude Code
 .claude/
+.superpowers/
 
 # Data caches (market snapshots, generated images, logs)
 data/
