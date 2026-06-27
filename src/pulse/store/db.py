@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS posts (
 
 
 # How long a writer waits for the lock before erroring (poller + drafter share the DB).
-BUSY_TIMEOUT_MS = 5000
+BUSY_TIMEOUT_MS = 60000  # 60s — two writers (poller + drafter) share the DB; ride out contention
 
 
 class Database:

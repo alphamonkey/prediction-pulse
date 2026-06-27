@@ -215,7 +215,7 @@ def test_stats_counts(db):
 
 def test_connect_sets_busy_timeout(db):
     # Two writer processes (poller + drafter) share the DB; writers must wait for the lock.
-    assert db.conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+    assert db.conn.execute("PRAGMA busy_timeout").fetchone()[0] == 60000
 
 
 # ── posts (publisher) ──
