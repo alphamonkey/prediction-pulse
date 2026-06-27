@@ -89,3 +89,18 @@ def test_waits_on_the_provided_stop_event_between_cycles():
     job = CountingJob()
     IntervalScheduler(job, interval_seconds=7, max_iterations=2).run(RecordingStop())
     assert waits == [7, 7]  # one wait per completed cycle
+
+
+def test_jitter_adds_random_offset_to_wait(monkeypatch):
+    import pulse.scheduler.interval as interval_mod
+    monkeypatch.setattr(interval_mod.random, "uniform", lambda a, b: 3.0)
+    waits = []
+
+    class RecordingStop(threading.Event):
+        def wait(self, timeout=None):
+            waits.append(timeout)
+            return super().wait(0)
+
+    IntervalScheduler(CountingJob(), interval_seconds=10, max_iterations=2,
+                      jitter_seconds=5).run(RecordingStop())
+    assert waits == [13, 13]  # interval 10 + jitter 3.0

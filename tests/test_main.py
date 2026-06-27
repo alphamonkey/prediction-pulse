@@ -54,7 +54,8 @@ def test_run_command_drives_the_scheduler(monkeypatch):
     FakeJob = _fakes(monkeypatch, calls)
 
     class FakeScheduler:
-        def __init__(self, job, interval_seconds, *, max_iterations=0):
+        def __init__(self, job, interval_seconds, *, max_iterations=0, jitter_seconds=0):
+            calls["jitter"] = jitter_seconds
             calls["job_is_polljob"] = isinstance(job, FakeJob)
             calls["interval"] = interval_seconds
             calls["max_iterations"] = max_iterations
@@ -79,7 +80,8 @@ def test_run_command_defaults_interval_from_config(monkeypatch):
     _fakes(monkeypatch, calls)
 
     class FakeScheduler:
-        def __init__(self, job, interval_seconds, *, max_iterations=0):
+        def __init__(self, job, interval_seconds, *, max_iterations=0, jitter_seconds=0):
+            calls["jitter"] = jitter_seconds
             calls["interval"] = interval_seconds
 
         def run(self, stop=None):
@@ -173,7 +175,8 @@ def test_draft_loop_drives_scheduler(monkeypatch):
     from pulse.drafter import DraftJob
 
     class FakeScheduler:
-        def __init__(self, job, interval_seconds, *, max_iterations=0):
+        def __init__(self, job, interval_seconds, *, max_iterations=0, jitter_seconds=0):
+            calls["jitter"] = jitter_seconds
             calls["job_name"] = job.name
             calls["is_draftjob"] = isinstance(job, DraftJob)
             calls["interval"] = interval_seconds
@@ -259,7 +262,8 @@ def test_publish_loop_drives_scheduler(monkeypatch):
     from pulse.publisher import PublishJob
 
     class FakeScheduler:
-        def __init__(self, job, interval_seconds, *, max_iterations=0):
+        def __init__(self, job, interval_seconds, *, max_iterations=0, jitter_seconds=0):
+            calls["jitter"] = jitter_seconds
             calls["job_name"] = job.name
             calls["is_publishjob"] = isinstance(job, PublishJob)
             calls["interval"] = interval_seconds
@@ -269,10 +273,11 @@ def test_publish_loop_drives_scheduler(monkeypatch):
 
     monkeypatch.setattr(main, "IntervalScheduler", FakeScheduler)
 
-    main.cli(["publish", "--interval", "3600", "--max-iterations", "1"])
+    main.cli(["publish", "--interval", "3600", "--max-iterations", "1", "--jitter", "120"])
 
     assert calls["job_name"] == "publish"
     assert calls["is_publishjob"] is True
     assert calls["interval"] == 3600
+    assert calls["jitter"] == 120  # --jitter reaches the scheduler
     assert calls["scheduler_ran"] is True
     assert calls["closed"] is True

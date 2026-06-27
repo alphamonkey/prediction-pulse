@@ -8,6 +8,7 @@ raising is logged and the loop continues, so a transient error never halts colle
 from __future__ import annotations
 
 import logging
+import random
 import threading
 
 from pulse.scheduler.base import Job
@@ -16,10 +17,14 @@ log = logging.getLogger("pulse")
 
 
 class IntervalScheduler:
-    def __init__(self, job: Job, interval_seconds: int, *, max_iterations: int = 0) -> None:
+    def __init__(
+        self, job: Job, interval_seconds: int, *, max_iterations: int = 0,
+        jitter_seconds: float = 0,
+    ) -> None:
         self._job = job
         self._interval = interval_seconds
-        self._max_iterations = max_iterations  # 0 = unlimited
+        self._max_iterations = max_iterations
+        self._jitter = jitter_seconds  # 0 = fixed cadence; >0 de-syncs writers + organic timing  # 0 = unlimited
 
     def run(self, stop: threading.Event | None = None) -> None:
         stop = stop or threading.Event()
@@ -33,5 +38,5 @@ class IntervalScheduler:
                 self._job.run()
             except Exception:  # noqa: BLE001 — one bad cycle must not kill the loop
                 log.exception("job '%s' cycle %d failed", self._job.name, n)
-            stop.wait(self._interval)
+            stop.wait(self._interval + random.uniform(0, self._jitter))
         log.info("scheduler: stopped after %d cycle(s)", n)

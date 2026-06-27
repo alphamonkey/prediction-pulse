@@ -9,7 +9,7 @@ User=pi
 WorkingDirectory=/home/pi/Projects/prediction-pulse
 # SAFETY: posts only when PULSE_MODE=live in .env; dryrun (the default) just logs "would post".
 # Cadence + per-cycle cap are the knobs (the daily MAX_POSTS_PER_DAY also bounds it).
-ExecStart=/home/pi/Projects/prediction-pulse/.venv/bin/pulse publish --interval 3600 --limit 1
+ExecStart=/home/pi/Projects/prediction-pulse/.venv/bin/pulse publish --interval 14400 --jitter 1800 --limit 1
 Restart=on-failure
 RestartSec=30
 
