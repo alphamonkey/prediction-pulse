@@ -47,6 +47,27 @@ DEFAULT_INTERVAL_SECONDS = 900  # `pulse run` poll cadence: 15 min
 METRICS_INTERVAL_SECONDS = 3600  # `pulse metrics` cadence: 1 h
 METRICS_POST_WINDOW = 50         # how many recent posts to refresh engagement for each cycle
 
+# ── Engagement (outbound signals: like/repost/follow relevant Bluesky content) ──
+ENGAGE_INTERVAL_SECONDS = 3600   # `pulse engage` cadence: 1 h
+ENGAGE_TARGETS_PER_RUN = 25      # candidate posts to pull per cycle (before filtering)
+# Bluesky search terms used to *find* targets:
+ENGAGE_QUERIES = ("kalshi", "prediction market", "polymarket")
+# Relevance filter — a target is kept only if its text matches one of these (defaults to the
+# search terms; widen to engage adjacent conversations):
+ENGAGE_ALLOW = ENGAGE_QUERIES
+# Safety denylist — drop a target if its text contains any of these lightning-rod/toxic terms,
+# even when on-topic. Deliberately over-rejects; tune per the persona's no-go rules.
+ENGAGE_DENY = (
+    "abortion", "shooting", "nazi", "racist", "racism", "rape",
+    "genocide", "slur", "suicide", "porn",
+)
+# Which signals are enabled, attempted in this order. Follows are the most flag-prone, so they are
+# OFF by default — add "follow" here (and watch MAX_FOLLOWS_PER_DAY) to enable.
+ENGAGE_ACTIONS = ("like", "repost")
+MAX_LIKES_PER_DAY = 30           # rolling-24h cap per action (keeps signals human-paced)
+MAX_REPOSTS_PER_DAY = 5
+MAX_FOLLOWS_PER_DAY = 10
+
 # ── Kalshi public API (read-only; no auth) ──
 KALSHI_API_HOST = "https://api.elections.kalshi.com/trade-api/v2"
 

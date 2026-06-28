@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from pulse.config import MAX_RECENT_SNAPSHOTS
+from pulse.engage.base import SignalKind
 from pulse.metrics.base import AccountStats, MetricKind, PostEngagement
 from pulse.models import Event, MarketMeta, Snapshot, ValueKind, _now
 from pulse.writer.base import Draft
@@ -92,6 +93,21 @@ CREATE TABLE IF NOT EXISTS post_metrics (
     fetched_at  TEXT NOT NULL,
     PRIMARY KEY (uri, metric)
 );
+
+-- Outbound engagement actions we've taken (like/repost/follow). One row per action+target;
+-- UNIQUE keeps us from ever engaging the same target twice. target_did keys follows; target_uri
+-- keys post-level signals (the unused one is '').
+CREATE TABLE IF NOT EXISTS interactions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    persona     TEXT NOT NULL,
+    channel     TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    target_uri  TEXT NOT NULL DEFAULT '',
+    target_did  TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    UNIQUE(persona, channel, action, target_uri, target_did)
+);
+CREATE INDEX IF NOT EXISTS idx_interactions_cap ON interactions(channel, action, created_at);
 """
 
 # Passive metrics are views, not interactions — excluded from "total engagements" and the leaderboard,
@@ -330,6 +346,56 @@ class Database:
         return self.conn.execute(
             "SELECT COUNT(*) FROM posts WHERE channel = ? AND posted_at >= ?",
             (channel, cutoff),
+        ).fetchone()[0]
+
+    # ── Engagement (interactions) ──────────────────────────────────────────────
+    def record_interaction(
+        self, persona: str, channel: str, action: SignalKind, *,
+        target_uri: str = "", target_did: str = "",
+    ) -> bool:
+        """Record an engagement action. Returns True if newly recorded, False if a duplicate.
+
+        UNIQUE(persona, channel, action, target_uri, target_did) means we never like/repost/follow
+        the same target twice, even under a race.
+        """
+        assert self.conn is not None
+        with self._lock:
+            cur = self.conn.execute(
+                """INSERT OR IGNORE INTO interactions
+                   (persona, channel, action, target_uri, target_did, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (persona, channel, action.value, target_uri, target_did, _now().isoformat()),
+            )
+            self.conn.commit()
+            return cur.rowcount > 0
+
+    def has_interacted(
+        self, persona: str, channel: str, action: SignalKind, *,
+        target_uri: str = "", target_did: str = "",
+    ) -> bool:
+        """Whether this action was already taken — matched on whichever key(s) you supply
+        (uri for likes/reposts, did for follows)."""
+        assert self.conn is not None
+        clauses = ["persona = ?", "channel = ?", "action = ?"]
+        params: list = [persona, channel, action.value]
+        if target_uri:
+            clauses.append("target_uri = ?")
+            params.append(target_uri)
+        if target_did:
+            clauses.append("target_did = ?")
+            params.append(target_did)
+        row = self.conn.execute(
+            f"SELECT 1 FROM interactions WHERE {' AND '.join(clauses)}", params
+        ).fetchone()
+        return row is not None
+
+    def signals_today(self, channel: str, action: SignalKind) -> int:
+        """Count of `action` on `channel` in the last 24h (rolling) — for the per-action cap."""
+        assert self.conn is not None
+        cutoff = (_now() - timedelta(hours=24)).isoformat()
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM interactions WHERE channel = ? AND action = ? AND created_at >= ?",
+            (channel, action.value, cutoff),
         ).fetchone()[0]
 
     def get_unposted_drafts(

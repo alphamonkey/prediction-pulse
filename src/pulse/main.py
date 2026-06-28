@@ -18,6 +18,8 @@ import threading
 
 from pulse import config
 from pulse.drafter import DraftJob, draft_once
+from pulse.engage.base import SignalKind
+from pulse.engager import EngageJob, EngagePolicy
 from pulse.metrics.collect import MetricsJob
 from pulse.metrics.factory import make_engagement_source
 from pulse.persona import load_persona
@@ -100,6 +102,43 @@ def _run_metrics(post_limit: int, interval: int, max_iterations: int, jitter: in
         db.close()
 
 
+def _engage_policy() -> EngagePolicy:
+    """Build the engagement policy from config (relevance/safety + enabled actions + caps)."""
+    caps = {
+        SignalKind.LIKE: config.MAX_LIKES_PER_DAY,
+        SignalKind.REPOST: config.MAX_REPOSTS_PER_DAY,
+        SignalKind.FOLLOW: config.MAX_FOLLOWS_PER_DAY,
+    }
+    actions = tuple(SignalKind(a) for a in config.ENGAGE_ACTIONS)
+    return EngagePolicy(
+        allow=list(config.ENGAGE_ALLOW),
+        deny=list(config.ENGAGE_DENY),
+        actions=actions,
+        caps=caps,
+        queries=list(config.ENGAGE_QUERIES),
+    )
+
+
+def _run_engage(limit: int, persona_name: str, interval: int, max_iterations: int,
+                jitter: int) -> None:
+    # NB: persona/policy are loaded once at startup (same as draft/publish) — GitHub issue #13
+    # tracks moving persona reload per-cycle across all the long-running jobs.
+    persona = load_persona(persona_name)
+    policy = _engage_policy()
+    db = Database(config.DB_PATH)
+    db.connect()
+    try:
+        job = EngageJob(db, persona, policy, limit=limit)
+        if interval > 0:
+            log.info("engaging every %ds (persona=%s, mode=%s)",
+                     interval, persona.name, config.PULSE_MODE)
+            _run_scheduled(job, interval, max_iterations, jitter)
+        else:
+            job.run()
+    finally:
+        db.close()
+
+
 def make_writer() -> Writer:
     """ClaudeWriter when an API key is configured; the zero-cost template writer otherwise."""
     if config.ANTHROPIC_API_KEY:
@@ -163,6 +202,17 @@ def cli(argv: list[str] | None = None) -> None:
                        help="With --interval, stop after N cycles; 0 = unlimited (default: 0).")
     pub_p.add_argument("--jitter", type=int, default=0,
                        help="Max extra random seconds added to each interval (default: 0).")
+    eng_p = sub.add_parser("engage", help="Take engagement signals (like/repost/follow) on relevant content.")
+    eng_p.add_argument("--persona", default=config.PERSONA,
+                       help="Persona name under personas/ (default: %(default)s).")
+    eng_p.add_argument("--limit", type=int, default=config.ENGAGE_TARGETS_PER_RUN,
+                       help="Candidate targets to pull per cycle (default: %(default)s).")
+    eng_p.add_argument("--interval", type=int, default=0,
+                       help="Run on a cadence (seconds); 0 = one-shot (default: 0).")
+    eng_p.add_argument("--max-iterations", type=int, default=0,
+                       help="With --interval, stop after N cycles; 0 = unlimited (default: 0).")
+    eng_p.add_argument("--jitter", type=int, default=0,
+                       help="Max extra random seconds added to each interval (default: 0).")
     met_p = sub.add_parser("metrics", help="Collect engagement back from the platform for the dashboard.")
     met_p.add_argument("--limit", type=int, default=config.METRICS_POST_WINDOW,
                        help="Recent posts to refresh engagement for (default: %(default)s).")
@@ -188,6 +238,8 @@ def cli(argv: list[str] | None = None) -> None:
         _run_draft(args.limit, args.persona, args.interval, args.max_iterations, args.jitter)
     elif args.command == "publish":
         _run_publish(args.limit, args.persona, args.interval, args.max_iterations, args.jitter)
+    elif args.command == "engage":
+        _run_engage(args.limit, args.persona, args.interval, args.max_iterations, args.jitter)
     elif args.command == "metrics":
         _run_metrics(args.limit, args.interval, args.max_iterations, args.jitter)
     elif args.command == "serve":
