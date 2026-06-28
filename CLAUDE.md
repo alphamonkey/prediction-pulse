@@ -30,19 +30,30 @@ Every stage is a swappable seam (a `Protocol`); the orchestrators wire them toge
   **live gate** (real publisher only when `PULSE_MODE=live` + creds, else DryRun). `publish_once` +
   `PublishJob` post a persona's freshest, non-stale, un-posted drafts per channel — idempotent, under
   the daily cap.
+- **`metrics/`** — `EngagementSource` seam (mirrors `publish/`): `BlueskyEngagementSource` (atproto,
+  read-only, batches `get_posts` by 25), `NullEngagementSource`, `make_engagement_source()` live
+  gate. Capability-driven over a normalized `MetricKind` vocabulary + per-post metric *bag*, so
+  platforms with different metric sets (Bluesky vs. X's impressions/bookmarks) slot in with no
+  schema/UI change (see memory `cross-platform-seams`). `collect_once` + `MetricsJob` snapshot the
+  account + upsert recent posts' current engagement — latest-only, no per-post time-series.
 - **`store/db.py`** — SQLite + WAL, `threading.Lock`, `busy_timeout=60s`, `INSERT OR IGNORE`
-  idempotency. Tables: `market_snapshots`, `posted_events`, `drafts`, `posts`.
+  idempotency. Tables: `market_snapshots`, `posted_events`, `drafts`, `posts`, `account_snapshots`
+  (follower series), `post_metrics` (tall: one row per uri+metric → new metrics need no `ALTER`).
+  KPM reads: `kpms`, `follower_series`, `top_posts`.
 - **`scheduler/`** — `Job`/`Scheduler` seam + `IntervalScheduler` (interruptible `stop.wait`,
   `max_iterations`, optional `jitter_seconds`; survives per-cycle exceptions).
 - **`poller.py` / `drafter.py`** — the collect and draft cycles as `Job`s (`PollJob`, `DraftJob`).
 - **`server/`** — read-only FastAPI dashboard (`app.py` + `static/`), per-request `connect_readonly`.
-- **`main.py`** — CLI: `poll`, `run`, `draft`, `publish`, `serve` (see README for flags).
+  Leads with a KPM **scorecard** (`/api/kpms|followers|top-posts`) over the **Pipeline** throughput
+  view (`/api/stats|events|drafts`).
+- **`main.py`** — CLI: `poll`, `run`, `draft`, `publish`, `metrics`, `serve` (see README for flags).
 - **`config.py`** — all knobs. `.env` (never committed) supplies `PULSE_MODE`, `BLUESKY_*`,
   `ANTHROPIC_API_KEY`.
 
 ## Running state
 Live on Bluesky. systemd services (`deploy/`): poller `prediction-pulse` (15 min), drafter
-`prediction-pulse-drafter` (1 h), publisher `prediction-pulse-publisher` (4 h + jitter), dashboard
+`prediction-pulse-drafter` (1 h), publisher `prediction-pulse-publisher` (4 h + jitter), metrics
+`prediction-pulse-metrics` (1 h + jitter, read-only/no-op in dryrun), dashboard
 `prediction-pulse-dashboard` (`:8440`). Dry-run until `PULSE_MODE=live` in `.env`.
 
 **Deploy gotcha:** code changes apply on a plain `systemctl restart`; **`deploy/*.service` changes
@@ -64,8 +75,10 @@ The operator runs `sudo` via the `!` prefix (no passwordless sudo). See memory `
 - Issue #6: surface API cost on the dashboard. Issue #7: attach the market link per platform.
 - **Snapshot retention/pruning** — `market_snapshots` grows unbounded, slowly slowing poll cycles
   (the deeper cause behind past lock contention). Its own chunk.
-- A **new detector type** (operator is designing it). Cross-posting (X / Threads). Engagement
-  pull-back (likes/reposts → the feedback loop).
+- A **new detector type** (operator is designing it). Cross-posting (X / Threads).
+- **Engagement pull-back, deeper layer:** the `metrics/` seam now collects *current aggregate*
+  engagement for the KPM dashboard; still open are per-post engagement *over time* and
+  rule→engagement *attribution* (which rule travels best → tune `RULE_WEIGHTS`).
 
 ## Setup
 ```bash

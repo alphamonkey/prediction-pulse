@@ -43,6 +43,10 @@ MAX_RECENT_SNAPSHOTS = 64                # cap loaded per market (INVARIANT: >> 
 MAX_POSTS_PER_DAY = 8         # rate cap so the feed stays signal, not spam
 DEFAULT_INTERVAL_SECONDS = 900  # `pulse run` poll cadence: 15 min
 
+# ── Metrics collection (engagement pull-back for the KPM dashboard) ──
+METRICS_INTERVAL_SECONDS = 3600  # `pulse metrics` cadence: 1 h
+METRICS_POST_WINDOW = 50         # how many recent posts to refresh engagement for each cycle
+
 # ── Kalshi public API (read-only; no auth) ──
 KALSHI_API_HOST = "https://api.elections.kalshi.com/trade-api/v2"
 

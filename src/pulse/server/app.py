@@ -53,6 +53,30 @@ def create_app() -> FastAPI:
         finally:
             db.close()
 
+    @app.get("/api/kpms")
+    def kpms() -> JSONResponse:
+        db = Database.connect_readonly(config.DB_PATH)
+        try:
+            return JSONResponse(db.kpms())
+        finally:
+            db.close()
+
+    @app.get("/api/followers")
+    def followers(days: int = 30) -> JSONResponse:
+        db = Database.connect_readonly(config.DB_PATH)
+        try:
+            return JSONResponse(db.follower_series(days))
+        finally:
+            db.close()
+
+    @app.get("/api/top-posts")
+    def top_posts(limit: int = 5) -> JSONResponse:
+        db = Database.connect_readonly(config.DB_PATH)
+        try:
+            return JSONResponse(db.top_posts(limit))
+        finally:
+            db.close()
+
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(STATIC / "index.html")

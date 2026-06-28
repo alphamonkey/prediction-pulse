@@ -18,6 +18,8 @@ import threading
 
 from pulse import config
 from pulse.drafter import DraftJob, draft_once
+from pulse.metrics.collect import MetricsJob
+from pulse.metrics.factory import make_engagement_source
 from pulse.persona import load_persona
 from pulse.poller import PollJob
 from pulse.publisher import PublishJob
@@ -75,6 +77,22 @@ def _run_publish(limit: int, persona_name: str, interval: int, max_iterations: i
         if interval > 0:
             log.info("publishing every %ds (persona=%s, mode=%s)",
                      interval, persona.name, config.PULSE_MODE)
+            _run_scheduled(job, interval, max_iterations, jitter)
+        else:
+            job.run()
+    finally:
+        db.close()
+
+
+def _run_metrics(post_limit: int, interval: int, max_iterations: int, jitter: int) -> None:
+    db = Database(config.DB_PATH)
+    db.connect()
+    try:
+        source = make_engagement_source("bluesky")
+        job = MetricsJob(db, source, handle=config.BLUESKY_HANDLE, post_limit=post_limit)
+        if interval > 0:
+            log.info("collecting metrics every %ds (platform=%s, mode=%s)",
+                     interval, source.name, config.PULSE_MODE)
             _run_scheduled(job, interval, max_iterations, jitter)
         else:
             job.run()
@@ -145,6 +163,15 @@ def cli(argv: list[str] | None = None) -> None:
                        help="With --interval, stop after N cycles; 0 = unlimited (default: 0).")
     pub_p.add_argument("--jitter", type=int, default=0,
                        help="Max extra random seconds added to each interval (default: 0).")
+    met_p = sub.add_parser("metrics", help="Collect engagement back from the platform for the dashboard.")
+    met_p.add_argument("--limit", type=int, default=config.METRICS_POST_WINDOW,
+                       help="Recent posts to refresh engagement for (default: %(default)s).")
+    met_p.add_argument("--interval", type=int, default=0,
+                       help="Run on a cadence (seconds); 0 = one-shot (default: 0).")
+    met_p.add_argument("--max-iterations", type=int, default=0,
+                       help="With --interval, stop after N cycles; 0 = unlimited (default: 0).")
+    met_p.add_argument("--jitter", type=int, default=0,
+                       help="Max extra random seconds added to each interval (default: 0).")
     serve_p = sub.add_parser("serve", help="Run the read-only monitoring dashboard.")
     serve_p.add_argument("--host", default=config.DASHBOARD_HOST,
                          help="Bind host (default: %(default)s).")
@@ -161,6 +188,8 @@ def cli(argv: list[str] | None = None) -> None:
         _run_draft(args.limit, args.persona, args.interval, args.max_iterations, args.jitter)
     elif args.command == "publish":
         _run_publish(args.limit, args.persona, args.interval, args.max_iterations, args.jitter)
+    elif args.command == "metrics":
+        _run_metrics(args.limit, args.interval, args.max_iterations, args.jitter)
     elif args.command == "serve":
         from pulse.server.app import serve  # lazy: fastapi only needed for the dashboard
         log.info("dashboard on http://%s:%d", args.host, args.port)

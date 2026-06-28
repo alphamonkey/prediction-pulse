@@ -13,10 +13,12 @@
     td, th { padding:.4rem .5rem; }
     tbody tr { border-top:1px solid #1f2933; }
     .mono { font-variant-numeric: tabular-nums; }
+    .pos { color:#4ade80; } .neg { color:#f87171; }
+    h2.section { letter-spacing:.06em; }
   </style>
 </head>
 <body class="min-h-screen">
-  <main class="max-w-6xl mx-auto p-6 space-y-6">
+  <main class="max-w-6xl mx-auto p-6 space-y-8">
 
     <header class="flex items-center justify-between flex-wrap gap-2">
       <div>
@@ -29,35 +31,67 @@
       </div>
     </header>
 
-    <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Markets tracked</div><div id="m-markets" class="text-2xl font-semibold mono">–</div></div>
-      <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Snapshots</div><div id="m-snapshots" class="text-2xl font-semibold mono">–</div></div>
-      <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Events detected</div><div id="m-events" class="text-2xl font-semibold mono">–</div></div>
-      <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Drafts written</div><div id="m-drafts" class="text-2xl font-semibold mono">–</div></div>
+    <!-- ───────────── Scorecard ───────────── -->
+    <section class="space-y-4">
+      <h2 class="section text-slate-400 text-xs uppercase font-semibold">Scorecard</h2>
+
+      <div id="kpm-cards" class="grid grid-cols-2 md:grid-cols-5 gap-4"></div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="card rounded-xl p-4">
+          <h3 class="font-semibold mb-3">Follower growth</h3>
+          <canvas id="follower-chart" height="120"></canvas>
+        </div>
+        <div class="card rounded-xl p-4">
+          <h3 class="font-semibold mb-3">Engagement mix</h3>
+          <canvas id="mix-chart" height="120"></canvas>
+        </div>
+      </div>
+
+      <div class="card rounded-xl p-4">
+        <h3 class="font-semibold mb-3">Top posts <span class="text-slate-500 text-sm font-normal">by engagement</span></h3>
+        <table class="w-full text-sm">
+          <thead class="text-slate-500 text-left"><tr><th>Post</th><th class="text-right">❤</th><th class="text-right">🔁</th><th class="text-right">💬</th><th class="text-right">total</th></tr></thead>
+          <tbody id="top-posts"></tbody>
+        </table>
+      </div>
+
+      <p class="text-slate-600 text-xs">Rates are per-post — Bluesky's API exposes no impressions, so there is no true "engagement rate" until a platform that reports reach is added.</p>
     </section>
 
-    <section class="card rounded-xl p-4">
-      <h2 class="font-semibold mb-3">Events by rule</h2>
-      <canvas id="rule-chart" height="80"></canvas>
+    <!-- ───────────── Pipeline ───────────── -->
+    <section class="space-y-4">
+      <h2 class="section text-slate-400 text-xs uppercase font-semibold">Pipeline</h2>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Markets tracked</div><div id="m-markets" class="text-2xl font-semibold mono">–</div></div>
+        <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Snapshots</div><div id="m-snapshots" class="text-2xl font-semibold mono">–</div></div>
+        <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Events detected</div><div id="m-events" class="text-2xl font-semibold mono">–</div></div>
+        <div class="card rounded-xl p-4"><div class="text-slate-500 text-xs uppercase">Drafts written</div><div id="m-drafts" class="text-2xl font-semibold mono">–</div></div>
+      </div>
+
+      <div class="card rounded-xl p-4">
+        <h3 class="font-semibold mb-3">Events by rule</h3>
+        <canvas id="rule-chart" height="80"></canvas>
+      </div>
+
+      <div class="card rounded-xl p-4">
+        <h3 class="font-semibold mb-3">Recent detected events</h3>
+        <table class="w-full text-sm">
+          <thead class="text-slate-500 text-left"><tr><th>When</th><th>Rule</th><th>Market</th><th>Move</th><th>Headline</th></tr></thead>
+          <tbody id="events"></tbody>
+        </table>
+      </div>
+
+      <div class="card rounded-xl p-4">
+        <h3 class="font-semibold mb-3">Recent drafts</h3>
+        <table class="w-full text-sm">
+          <thead class="text-slate-500 text-left"><tr><th>When</th><th>Persona</th><th>Draft</th></tr></thead>
+          <tbody id="drafts"></tbody>
+        </table>
+      </div>
     </section>
 
-    <section class="card rounded-xl p-4">
-      <h2 class="font-semibold mb-3">Recent detected events</h2>
-      <table class="w-full text-sm">
-        <thead class="text-slate-500 text-left"><tr><th>When</th><th>Rule</th><th>Market</th><th>Move</th><th>Headline</th></tr></thead>
-        <tbody id="events"></tbody>
-      </table>
-    </section>
-
-    <section class="card rounded-xl p-4">
-      <h2 class="font-semibold mb-3">Recent drafts</h2>
-      <table class="w-full text-sm">
-        <thead class="text-slate-500 text-left"><tr><th>When</th><th>Persona</th><th>Draft</th></tr></thead>
-        <tbody id="drafts"></tbody>
-      </table>
-    </section>
-
-    <p class="text-slate-600 text-xs text-center">dryrun — nothing is published</p>
   </main>
 
   <script>
@@ -65,31 +99,96 @@
     const f = (u) => fetch(u).then((r) => r.json());
     const esc = (s) => (s ?? "").toString().replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
     const t = (iso) => (iso ? new Date(iso).toLocaleString() : "–");
+    const n = (v) => (v ?? 0).toLocaleString();
 
-    let chart;
+    function kpmCard(label, value, sub) {
+      return `<div class="card rounded-xl p-4">
+        <div class="text-slate-500 text-xs uppercase">${label}</div>
+        <div class="text-2xl font-semibold mono">${value}</div>
+        <div class="text-xs mt-1">${sub ?? ""}</div></div>`;
+    }
+
+    function drawKpms(k) {
+      const d = k.follower_delta_7d;
+      const delta = d == null ? "" : `<span class="${d >= 0 ? "pos" : "neg"}">${d >= 0 ? "+" : ""}${n(d)} / 7d</span>`;
+      const cards = [
+        kpmCard("Followers", k.followers == null ? "–" : n(k.followers), delta),
+        kpmCard("Applause", k.applause ?? 0, "avg ❤ / post"),
+        kpmCard("Conversation", k.conversation ?? 0, "avg 💬 / post"),
+        kpmCard("Amplification", k.amplification ?? 0, "avg 🔁+quote / post"),
+        kpmCard("Engagements", n(k.total_engagements), `${n(k.posts_measured)} posts measured`),
+      ];
+      if (k.engagement_rate !== undefined) {
+        cards.push(kpmCard("Engagement rate", k.engagement_rate + "%", "of impressions"));
+      }
+      $("kpm-cards").innerHTML = cards.join("");
+    }
+
+    let followerChart, mixChart, ruleChart;
+    const AXES = { x: { ticks: { color: "#64748b" }, grid: { color: "#1f2933" } },
+                   y: { ticks: { color: "#64748b" }, grid: { color: "#1f2933" } } };
+
+    function drawFollowers(series) {
+      const labels = series.map((p) => new Date(p.ts).toLocaleDateString());
+      const data = series.map((p) => p.followers);
+      if (!followerChart) {
+        followerChart = new Chart($("follower-chart"), {
+          type: "line",
+          data: { labels, datasets: [{ data, borderColor: "#38bdf8", backgroundColor: "#38bdf8",
+                   tension: 0.25, pointRadius: 2, fill: false }] },
+          options: { plugins: { legend: { display: false } }, scales: AXES },
+        });
+      } else { followerChart.data.labels = labels; followerChart.data.datasets[0].data = data; followerChart.update(); }
+    }
+
+    const MIX_HIDE = new Set(["impressions", "video_views"]);
+    const MIX_COLORS = ["#f87171", "#38bdf8", "#a78bfa", "#fbbf24", "#4ade80", "#fb7185"];
+    function drawMix(totals) {
+      const entries = Object.entries(totals || {}).filter(([k]) => !MIX_HIDE.has(k));
+      const labels = entries.map(([k]) => k);
+      const data = entries.map(([, v]) => v);
+      if (!mixChart) {
+        mixChart = new Chart($("mix-chart"), {
+          type: "doughnut",
+          data: { labels, datasets: [{ data, backgroundColor: MIX_COLORS, borderColor: "#131a22" }] },
+          options: { plugins: { legend: { position: "right", labels: { color: "#94a3b8" } } } },
+        });
+      } else { mixChart.data.labels = labels; mixChart.data.datasets[0].data = data; mixChart.update(); }
+    }
+
     function drawRuleChart(byRule) {
       const labels = Object.keys(byRule);
       const data = labels.map((k) => byRule[k]);
-      if (!chart) {
-        chart = new Chart($("rule-chart"), {
+      if (!ruleChart) {
+        ruleChart = new Chart($("rule-chart"), {
           type: "bar",
           data: { labels, datasets: [{ data, backgroundColor: "#3b82f6" }] },
-          options: {
-            indexAxis: "y",
-            plugins: { legend: { display: false } },
+          options: { indexAxis: "y", plugins: { legend: { display: false } },
             scales: { x: { ticks: { color: "#64748b" }, grid: { color: "#1f2933" } },
-                      y: { ticks: { color: "#94a3b8" }, grid: { display: false } } },
-          },
+                      y: { ticks: { color: "#94a3b8" }, grid: { display: false } } } },
         });
-      } else {
-        chart.data.labels = labels;
-        chart.data.datasets[0].data = data;
-        chart.update();
-      }
+      } else { ruleChart.data.labels = labels; ruleChart.data.datasets[0].data = data; ruleChart.update(); }
     }
 
     async function refresh() {
       try {
+        const k = await f("/api/kpms");
+        drawKpms(k);
+        drawMix(k.totals || {});
+
+        const followers = await f("/api/followers");
+        drawFollowers(followers);
+
+        const top = await f("/api/top-posts?limit=5");
+        $("top-posts").innerHTML = top.map((p) => {
+          const m = p.metrics || {};
+          return `<tr><td>${esc(p.text)}</td>`
+            + `<td class="text-right mono">${n(m.likes)}</td>`
+            + `<td class="text-right mono">${n(m.reposts)}</td>`
+            + `<td class="text-right mono">${n(m.replies)}</td>`
+            + `<td class="text-right mono font-semibold">${n(p.total)}</td></tr>`;
+        }).join("") || `<tr><td class="text-slate-500" colspan="5">no posts measured yet</td></tr>`;
+
         const s = await f("/api/stats");
         $("mode").textContent = s.mode;
         $("last-poll").textContent = t(s.last_poll);
@@ -101,7 +200,6 @@
 
         const events = await f("/api/events?limit=20");
         $("events").innerHTML = events.map((e) => {
-          const move = e.from_value != null ? "" : "";
           const dir = e.direction ? ` ${e.direction}` : "";
           return `<tr><td class="text-slate-500 mono whitespace-nowrap">${t(e.created_at)}</td>`
             + `<td>${esc(e.rule)}</td><td class="text-slate-400">${esc(e.market_id)}</td>`

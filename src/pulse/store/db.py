@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from pulse.config import MAX_RECENT_SNAPSHOTS
+from pulse.metrics.base import AccountStats, MetricKind, PostEngagement
 from pulse.models import Event, MarketMeta, Snapshot, ValueKind, _now
 from pulse.writer.base import Draft
 
@@ -70,7 +71,32 @@ CREATE TABLE IF NOT EXISTS posts (
     posted_at        TEXT NOT NULL,
     UNIQUE(event_dedup_key, channel)
 );
+
+-- Account-level counts over time (one row per metrics poll) — drives the follower-growth chart.
+CREATE TABLE IF NOT EXISTS account_snapshots (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          TEXT NOT NULL,
+    followers   INTEGER NOT NULL,
+    follows     INTEGER NOT NULL,
+    posts       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_account_ts ON account_snapshots(ts);
+
+-- Per-post engagement, stored TALL (one row per uri+metric) so platforms with different metric
+-- sets need no schema change. Latest-only: re-collecting upserts in place (no time-series).
+CREATE TABLE IF NOT EXISTS post_metrics (
+    uri         TEXT NOT NULL,
+    platform    TEXT NOT NULL,
+    metric      TEXT NOT NULL,
+    value       INTEGER NOT NULL,
+    fetched_at  TEXT NOT NULL,
+    PRIMARY KEY (uri, metric)
+);
 """
+
+# Passive metrics are views, not interactions — excluded from "total engagements" and the leaderboard,
+# and used as the denominator for a true engagement rate when a platform provides them.
+PASSIVE_METRICS = frozenset({MetricKind.IMPRESSIONS, MetricKind.VIDEO_VIEWS})
 
 
 # How long a writer waits for the lock before erroring (poller + drafter share the DB).
@@ -363,3 +389,121 @@ class Database:
             dedup_key=row["dedup_key"],
             context=json.loads(row["context"]) if row["context"] else {},
         )
+
+    # ── engagement metrics (collector writes; dashboard reads) ──
+
+    def insert_account_snapshot(self, stats: AccountStats) -> None:
+        """Append one account-level snapshot (followers/follows/posts) for the growth series."""
+        assert self.conn is not None
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO account_snapshots (ts, followers, follows, posts) VALUES (?, ?, ?, ?)",
+                (stats.fetched_at.isoformat(), stats.followers, stats.follows, stats.posts),
+            )
+            self.conn.commit()
+
+    def upsert_post_metrics(self, items: list[PostEngagement]) -> int:
+        """Upsert latest per-post metric counts (tall). Returns rows touched. Latest value wins."""
+        assert self.conn is not None
+        n = 0
+        with self._lock:
+            for e in items:
+                for metric, value in e.metrics.items():
+                    self.conn.execute(
+                        """INSERT INTO post_metrics (uri, platform, metric, value, fetched_at)
+                           VALUES (?, ?, ?, ?, ?)
+                           ON CONFLICT(uri, metric) DO UPDATE SET
+                             value=excluded.value,
+                             fetched_at=excluded.fetched_at,
+                             platform=excluded.platform""",
+                        (e.uri, e.platform, MetricKind(metric).value, int(value),
+                         e.fetched_at.isoformat()),
+                    )
+                    n += 1
+            self.conn.commit()
+        return n
+
+    def recent_post_uris(self, platform: str, limit: int = 50) -> list[str]:
+        """URIs of our recent posts to `platform` (newest first) — what to refresh engagement for."""
+        assert self.conn is not None
+        rows = self.conn.execute(
+            """SELECT uri FROM posts
+               WHERE channel = ? AND uri IS NOT NULL
+               ORDER BY posted_at DESC, id DESC LIMIT ?""",
+            (platform, limit),
+        ).fetchall()
+        return [r["uri"] for r in rows]
+
+    def follower_series(self, days: int = 30) -> list[dict]:
+        """Account follower count over the last `days`, ascending by ts — for the growth chart."""
+        assert self.conn is not None
+        cutoff = (_now() - timedelta(days=days)).isoformat()
+        rows = self.conn.execute(
+            "SELECT ts, followers FROM account_snapshots WHERE ts >= ? ORDER BY ts ASC",
+            (cutoff,),
+        ).fetchall()
+        return [{"ts": r["ts"], "followers": r["followers"]} for r in rows]
+
+    def kpms(self) -> dict:
+        """The content scorecard: follower growth + per-post engagement rates over the tall metrics.
+
+        Returns only metrics actually present, so a richer platform (e.g. one with impressions)
+        surfaces a true engagement rate while Bluesky shows per-post proxies. Empty-DB safe.
+        """
+        assert self.conn is not None
+        q = self.conn.execute
+
+        latest = q("SELECT followers FROM account_snapshots ORDER BY ts DESC LIMIT 1").fetchone()
+        followers = latest["followers"] if latest else None
+        delta = None
+        if followers is not None:
+            cutoff = (_now() - timedelta(days=7)).isoformat()
+            base = q("SELECT followers FROM account_snapshots WHERE ts >= ? ORDER BY ts ASC LIMIT 1",
+                     (cutoff,)).fetchone()
+            if base is not None:
+                delta = followers - base["followers"]
+
+        totals = {r["metric"]: r["total"] for r in
+                  q("SELECT metric, SUM(value) total FROM post_metrics GROUP BY metric")}
+        posts_measured = q("SELECT COUNT(DISTINCT uri) FROM post_metrics").fetchone()[0]
+
+        def avg(metric: MetricKind) -> float:
+            return round(totals.get(metric.value, 0) / posts_measured, 2) if posts_measured else 0.0
+
+        total_engagements = sum(
+            v for m, v in totals.items() if MetricKind(m) not in PASSIVE_METRICS
+        )
+        out = {
+            "followers": followers,
+            "follower_delta_7d": delta,
+            "posts_measured": posts_measured,
+            "totals": totals,
+            "applause": avg(MetricKind.LIKES),
+            "conversation": avg(MetricKind.REPLIES),
+            "amplification": round(avg(MetricKind.REPOSTS) + avg(MetricKind.QUOTES), 2),
+            "total_engagements": total_engagements,
+        }
+        impressions = totals.get(MetricKind.IMPRESSIONS.value, 0)
+        if impressions:
+            out["engagement_rate"] = round(total_engagements / impressions * 100, 2)
+        return out
+
+    def top_posts(self, limit: int = 5) -> list[dict]:
+        """Our posts ranked by total interaction engagement (passive views excluded) — the leaderboard."""
+        assert self.conn is not None
+        rows = self.conn.execute(
+            """SELECT pm.uri AS uri, COALESCE(p.text, '') AS text, pm.metric AS metric,
+                      pm.value AS value
+               FROM post_metrics pm
+               LEFT JOIN posts p ON p.uri = pm.uri
+               WHERE pm.metric NOT IN (?, ?)""",
+            (MetricKind.IMPRESSIONS.value, MetricKind.VIDEO_VIEWS.value),
+        ).fetchall()
+        agg: dict[str, dict] = {}
+        for r in rows:
+            e = agg.setdefault(
+                r["uri"], {"uri": r["uri"], "text": r["text"], "total": 0, "metrics": {}}
+            )
+            e["metrics"][r["metric"]] = r["value"]
+            e["total"] += r["value"]
+        return sorted(agg.values(), key=lambda e: e["total"], reverse=True)[:limit]
