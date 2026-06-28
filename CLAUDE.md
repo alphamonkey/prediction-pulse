@@ -79,6 +79,13 @@ The operator runs `sudo` via the `!` prefix (no passwordless sudo). See memory `
 - **Engagement pull-back, deeper layer:** the `metrics/` seam now collects *current aggregate*
   engagement for the KPM dashboard; still open are per-post engagement *over time* and
   rule→engagement *attribution* (which rule travels best → tune `RULE_WEIGHTS`).
+- **Persona/channel-aware metrics:** the metrics layer is currently single-account/global
+  (`account_snapshots` has no persona key; the collector uses one `BLUESKY_HANDLE` and doesn't loop
+  `persona.channels`; reads aggregate everything). For concurrent personae this blurs into one
+  series. Extension path (no architectural rework — persona is the one missing axis): persona/handle
+  dimension on `account_snapshots`, collector loops `persona.channels` (mirror `PublishJob`),
+  optional persona/channel filters on the reads + a dashboard selector. See memory
+  `metrics-persona-axis`.
 
 ## Setup
 ```bash
