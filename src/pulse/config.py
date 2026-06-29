@@ -40,7 +40,7 @@ NEW_MARKET_DEBUT_WINDOW = 6              # a market is "new" while it has <= thi
 MAX_RECENT_SNAPSHOTS = 64                # cap loaded per market (INVARIANT: >> DEBUT_WINDOW)
 
 # ── Cadence ──
-MAX_POSTS_PER_DAY = 8         # rate cap so the feed stays signal, not spam
+MAX_POSTS_PER_DAY = 9        # rate cap so the feed stays signal, not spam
 DEFAULT_INTERVAL_SECONDS = 900  # `pulse run` poll cadence: 15 min
 
 # ── Metrics collection (engagement pull-back for the KPM dashboard) ──
