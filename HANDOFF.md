@@ -22,11 +22,16 @@ bot that's BUILT and running LIVE on Bluesky. Before doing anything, get oriente
      - git-state-freshness.md     (verify remote/PR state with a live query, not stale refs)
 
 Current state to confirm before you trust it:
-- It's LIVE (PULSE_MODE=live). Four systemd services run: poller (15m), drafter (1h),
-  publisher (4h+jitter), dashboard (:8440). Verify with `systemctl is-active` and check
-  the dashboard / recent posts before assuming anything.
+- It's LIVE (PULSE_MODE=live). SIX systemd services run: poller (15m), drafter (1h),
+  publisher (4h+jitter), engager (1h+jitter, signals only), metrics (1h+jitter),
+  dashboard (:8440). **Publisher + engager are dayparted** — they act only inside
+  ACTIVE_TZ windows (config.py); the rest run 24/7. Verify with `systemctl is-active` and
+  check the dashboard / recent posts before assuming anything.
+- Two capabilities were added recently: an **engagement component** (`engage/` + `engager.py`
+  — like/repost/follow relevant Bluesky posts, signals only; PR #14) and **dayparting** (a
+  `WindowedScheduler`; PR #16). Both are in the as-built map in CLAUDE.md.
 - Run `git fetch && gh pr list` first — there may be an open PR awaiting merge.
-- `.venv/bin/pytest` should show 142 pass + 1 known red (test_defaults_to_dryrun, which
+- `.venv/bin/pytest` should show ~231 pass + 1 known red (test_defaults_to_dryrun, which
   fails only because .env sets PULSE_MODE=live — a test-isolation quirk, not a real bug).
 
 How we work here: brainstorm → plan (plan mode) → TDD chunk-by-chunk → PR to main (never
@@ -35,10 +40,18 @@ numbers), light "not financial advice" framing, no agriculture/food topics. Pers
 personas/ are the operator's content — don't edit their voice without asking. The operator
 runs sudo via the `!` prefix (no passwordless sudo).
 
-Likely next work (confirm with me before starting): snapshot retention/pruning — the
-market_snapshots table grows unbounded and is the root cause behind past lock contention —
-and a new detector type I'm designing. Smaller loose ends: a tiny test-isolation fix for
-test_defaults_to_dryrun and a duplicated comment at scheduler/interval.py:27.
+Likely next work (confirm with me before starting):
+- **Snapshot retention/pruning + DB bloat — the top operational risk.** market_snapshots grows
+  unbounded; the `*.db-wal` was seen at ~2.4 GB (checkpoints starving), the real cause behind
+  past lock contention / slowing poll cycles. Needs its own chunk.
+- **Reverse-poller** (designing): Bluesky trending → matching Kalshi market. Plugs in as another
+  engagement `TargetSource` and/or feeds original posts.
+- Issue #13: hot-reload persona (today persona/policy load once at daemon startup, so voice/config
+  edits need a service restart). Issue #6: API cost on the dashboard. Issue #7: market link per platform.
+- **Engagement, deeper:** reciprocal + curated-list TargetSources, reply/quote actions (LLM), and
+  rule→engagement attribution. **Tune the dayparting windows from real activity data.**
+- Persona/channel-aware metrics (single-account/global today). Tiny loose ends: test_defaults_to_dryrun
+  isolation fix; duplicated comment at scheduler/interval.py:27.
 
 Start by reading the above and giving me a short summary of your understanding + what you
 think the best next step is. Don't write code until we've agreed on a plan.

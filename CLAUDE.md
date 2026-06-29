@@ -83,9 +83,17 @@ The operator runs `sudo` via the `!` prefix (no passwordless sudo). See memory `
 
 ## Open items / next work
 - Issue #6: surface API cost on the dashboard. Issue #7: attach the market link per platform.
-- **Snapshot retention/pruning** — `market_snapshots` grows unbounded, slowly slowing poll cycles
-  (the deeper cause behind past lock contention). Its own chunk.
-- A **new detector type** (operator is designing it). Cross-posting (X / Threads).
+  Issue #13: hot-reload persona (persona/policy load once at daemon startup → voice/config edits
+  currently need a service restart).
+- **Snapshot retention/pruning + DB bloat — top operational risk.** `market_snapshots` grows
+  unbounded and the `*.db-wal` has ballooned (~2.4 GB seen, checkpoints starving) — the real cause
+  behind past lock contention / slowing poll cycles. Its own chunk.
+- A **new detector type** (operator is designing it). A **reverse-poller** (Bluesky trending →
+  matching Kalshi market) — plugs in as another engagement `TargetSource` and/or feeds original
+  posts. Cross-posting (X / Threads).
+- **Engagement, deeper:** signals (like/repost/follow) ship via `engage/` behind dayparting; still
+  open are reciprocal + curated-list `TargetSource`s, reply/quote (LLM) actions, and **tuning the
+  dayparting windows from real activity data**.
 - **Engagement pull-back, deeper layer:** the `metrics/` seam now collects *current aggregate*
   engagement for the KPM dashboard; still open are per-post engagement *over time* and
   rule→engagement *attribution* (which rule travels best → tune `RULE_WEIGHTS`).
