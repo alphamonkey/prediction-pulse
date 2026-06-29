@@ -47,9 +47,17 @@ DEFAULT_INTERVAL_SECONDS = 900  # `pulse run` poll cadence: 15 min
 METRICS_INTERVAL_SECONDS = 3600  # `pulse metrics` cadence: 1 h
 METRICS_POST_WINDOW = 50         # how many recent posts to refresh engagement for each cycle
 
+# ── Dayparting (active-hours for OUTWARD actions: publish + engage) ──
+# On Bluesky's reverse-chronological feed, when you act ≈ who sees it — so the publisher and engager
+# only run inside these windows (poller/drafter/metrics stay 24/7). Local ("HH:MM","HH:MM") pairs in
+# ACTIVE_TZ; end<=start wraps midnight; () = always-on. Tune from real audience-activity data.
+ACTIVE_TZ = "America/New_York"   # US prediction-markets audience
+PUBLISH_WINDOWS = (("07:00", "10:00"), ("12:00", "14:00"), ("17:00", "22:00"))  # ET peaks
+ENGAGE_WINDOWS = PUBLISH_WINDOWS  # default same; set independently to run engagement broader/earlier
+
 # ── Engagement (outbound signals: like/repost/follow relevant Bluesky content) ──
 ENGAGE_INTERVAL_SECONDS = 3600   # `pulse engage` cadence: 1 h
-ENGAGE_TARGETS_PER_RUN = 25      # candidate posts to pull per cycle (before filtering)
+ENGAGE_TARGETS_PER_RUN = 5       # candidates per cycle — small so signals drip within a window, not burst
 # Bluesky search terms used to *find* targets:
 ENGAGE_QUERIES = ("kalshi", "prediction market", "polymarket")
 # Relevance filter — a target is kept only if its text matches one of these (defaults to the

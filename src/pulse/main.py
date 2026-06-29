@@ -26,6 +26,7 @@ from pulse.persona import load_persona
 from pulse.poller import PollJob
 from pulse.publisher import PublishJob
 from pulse.scheduler.interval import IntervalScheduler
+from pulse.scheduler.windowed import WindowedScheduler
 from pulse.store.db import Database
 from pulse.venue.kalshi import KalshiClient, KalshiSource
 from pulse.writer.base import Writer
@@ -54,14 +55,26 @@ def _run_poll() -> None:
         job.run()
 
 
-def _run_scheduled(job, interval: int, max_iterations: int, jitter: int = 0) -> None:
-    """Drive any Job on a cadence with graceful SIGINT/SIGTERM shutdown."""
+def _install_stop() -> threading.Event:
+    """A stop Event wired to graceful SIGINT/SIGTERM shutdown."""
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
+    return stop
+
+
+def _run_scheduled(job, interval: int, max_iterations: int, jitter: int = 0) -> None:
+    """Drive any Job on a fixed cadence (24/7)."""
     IntervalScheduler(
         job, interval, max_iterations=max_iterations, jitter_seconds=jitter
-    ).run(stop)
+    ).run(_install_stop())
+
+
+def _run_windowed(job, interval: int, windows, tz: str, max_iterations: int, jitter: int) -> None:
+    """Drive an outward-action Job on a cadence, but only inside active windows (dayparting)."""
+    WindowedScheduler(
+        job, interval, windows=windows, tz=tz, max_iterations=max_iterations, jitter_seconds=jitter
+    ).run(_install_stop())
 
 
 def _run_loop(interval: int, max_iterations: int, jitter: int) -> None:
@@ -77,9 +90,10 @@ def _run_publish(limit: int, persona_name: str, interval: int, max_iterations: i
     try:
         job = PublishJob(db, persona, limit=limit)
         if interval > 0:
-            log.info("publishing every %ds (persona=%s, mode=%s)",
+            log.info("publishing every %ds within windows (persona=%s, mode=%s)",
                      interval, persona.name, config.PULSE_MODE)
-            _run_scheduled(job, interval, max_iterations, jitter)
+            _run_windowed(job, interval, config.PUBLISH_WINDOWS, config.ACTIVE_TZ,
+                          max_iterations, jitter)
         else:
             job.run()
     finally:
@@ -130,9 +144,10 @@ def _run_engage(limit: int, persona_name: str, interval: int, max_iterations: in
     try:
         job = EngageJob(db, persona, policy, limit=limit)
         if interval > 0:
-            log.info("engaging every %ds (persona=%s, mode=%s)",
+            log.info("engaging every %ds within windows (persona=%s, mode=%s)",
                      interval, persona.name, config.PULSE_MODE)
-            _run_scheduled(job, interval, max_iterations, jitter)
+            _run_windowed(job, interval, config.ENGAGE_WINDOWS, config.ACTIVE_TZ,
+                          max_iterations, jitter)
         else:
             job.run()
     finally:

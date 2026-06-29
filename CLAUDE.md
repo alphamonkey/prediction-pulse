@@ -41,20 +41,30 @@ Every stage is a swappable seam (a `Protocol`); the orchestrators wire them toge
   (follower series), `post_metrics` (tall: one row per uri+metric → new metrics need no `ALTER`).
   KPM reads: `kpms`, `follower_series`, `top_posts`.
 - **`scheduler/`** — `Job`/`Scheduler` seam + `IntervalScheduler` (interruptible `stop.wait`,
-  `max_iterations`, optional `jitter_seconds`; survives per-cycle exceptions).
+  `max_iterations`, optional `jitter_seconds`; survives per-cycle exceptions). `WindowedScheduler`
+  adds **dayparting**: same interval cadence but only inside active windows (pure tz-aware helpers in
+  `scheduler/windows.py`), sleeping toward the next window otherwise. Publisher + engager run
+  windowed (`PUBLISH_WINDOWS`/`ENGAGE_WINDOWS`/`ACTIVE_TZ`); poller/drafter/metrics stay 24/7.
+- **`engage/` + `engager.py`** — outbound *Action* seam (sibling of `publish/`): `TargetSource`
+  (`TopicalSearchSource` over Bluesky search) → relevance/safety filter → `Engager`
+  (`BlueskySignalEngager` like/repost/follow, `DryRunEngager`, `make_engager` live gate). `engage_once`
+  + `EngageJob` act on a persona's channels under per-action caps + `interactions`-table idempotency.
+  Signals only for now (reply/quote reserved); follows off by default.
 - **`poller.py` / `drafter.py`** — the collect and draft cycles as `Job`s (`PollJob`, `DraftJob`).
 - **`server/`** — read-only FastAPI dashboard (`app.py` + `static/`), per-request `connect_readonly`.
   Leads with a KPM **scorecard** (`/api/kpms|followers|top-posts`) over the **Pipeline** throughput
   view (`/api/stats|events|drafts`).
-- **`main.py`** — CLI: `poll`, `run`, `draft`, `publish`, `metrics`, `serve` (see README for flags).
+- **`main.py`** — CLI: `poll`, `run`, `draft`, `publish`, `engage`, `metrics`, `serve` (see README).
 - **`config.py`** — all knobs. `.env` (never committed) supplies `PULSE_MODE`, `BLUESKY_*`,
   `ANTHROPIC_API_KEY`.
 
 ## Running state
 Live on Bluesky. systemd services (`deploy/`): poller `prediction-pulse` (15 min), drafter
-`prediction-pulse-drafter` (1 h), publisher `prediction-pulse-publisher` (4 h + jitter), metrics
-`prediction-pulse-metrics` (1 h + jitter, read-only/no-op in dryrun), dashboard
-`prediction-pulse-dashboard` (`:8440`). Dry-run until `PULSE_MODE=live` in `.env`.
+`prediction-pulse-drafter` (1 h), publisher `prediction-pulse-publisher` (4 h + jitter), engager
+`prediction-pulse-engager` (1 h + jitter, signals only), metrics `prediction-pulse-metrics`
+(1 h + jitter, read-only/no-op in dryrun), dashboard `prediction-pulse-dashboard` (`:8440`).
+**Publisher + engager are dayparted** (act only inside `ACTIVE_TZ` windows); the rest run 24/7.
+Dry-run until `PULSE_MODE=live` in `.env`.
 
 **Deploy gotcha:** code changes apply on a plain `systemctl restart`; **`deploy/*.service` changes
 must be re-copied** to `/etc/systemd/system/` + `daemon-reload` + restart (git pull doesn't do it).

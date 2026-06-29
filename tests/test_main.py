@@ -261,17 +261,20 @@ def test_publish_loop_drives_scheduler(monkeypatch):
 
     from pulse.publisher import PublishJob
 
-    class FakeScheduler:
-        def __init__(self, job, interval_seconds, *, max_iterations=0, jitter_seconds=0):
+    class FakeWindowed:
+        def __init__(self, job, interval_seconds, *, windows, tz, max_iterations=0,
+                     jitter_seconds=0):
             calls["jitter"] = jitter_seconds
             calls["job_name"] = job.name
             calls["is_publishjob"] = isinstance(job, PublishJob)
             calls["interval"] = interval_seconds
+            calls["windows"] = windows
+            calls["tz"] = tz
 
         def run(self, stop=None):
             calls["scheduler_ran"] = True
 
-    monkeypatch.setattr(main, "IntervalScheduler", FakeScheduler)
+    monkeypatch.setattr(main, "WindowedScheduler", FakeWindowed)
 
     main.cli(["publish", "--interval", "3600", "--max-iterations", "1", "--jitter", "120"])
 
@@ -279,5 +282,7 @@ def test_publish_loop_drives_scheduler(monkeypatch):
     assert calls["is_publishjob"] is True
     assert calls["interval"] == 3600
     assert calls["jitter"] == 120  # --jitter reaches the scheduler
+    assert calls["windows"] == config.PUBLISH_WINDOWS  # publisher is dayparted
+    assert calls["tz"] == config.ACTIVE_TZ
     assert calls["scheduler_ran"] is True
     assert calls["closed"] is True
