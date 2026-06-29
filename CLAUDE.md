@@ -17,7 +17,11 @@ judgment/language task; cheap; measure-before-scale.
 Every stage is a swappable seam (a `Protocol`); the orchestrators wire them together.
 
 - **`venue/`** — `SnapshotSource` seam. `kalshi.py`: `KalshiClient` (httpx, free public API,
-  category allowlist + 24h-volume floor) + `KalshiSource` → normalized `Snapshot`s.
+  category allowlist + 24h-volume floor) + `KalshiSource` → normalized `Snapshot`s. `trending.py`:
+  `BlueskyTrendSource` — a peer source (`venue="kalshi"`) that selects markets from **Bluesky
+  trending topics** (`get_trends`) via per-trend token **co-occurrence** matching against market/event
+  titles, capped to top-N by volume — far fewer snapshots (bloat) + trend-relevant. Run via
+  `pulse run --source trend`; the broad `KalshiSource` poll stays as-is.
 - **`detector/`** — pure rules over recent snapshots, via a rule registry: `odds_swing`, `volume_spike`,
   `milestone`, `new_market`. Emits `Event`s. No LLM, fully TDD.
 - **`models.py`** — `Snapshot`, `Event`, `MarketMeta`, `ValueKind`.
@@ -54,7 +58,8 @@ Every stage is a swappable seam (a `Protocol`); the orchestrators wire them toge
 - **`server/`** — read-only FastAPI dashboard (`app.py` + `static/`), per-request `connect_readonly`.
   Leads with a KPM **scorecard** (`/api/kpms|followers|top-posts`) over the **Pipeline** throughput
   view (`/api/stats|events|drafts`).
-- **`main.py`** — CLI: `poll`, `run`, `draft`, `publish`, `engage`, `metrics`, `serve` (see README).
+- **`main.py`** — CLI: `poll`/`run` (`--source {kalshi,trend}`), `draft`, `publish`, `engage`,
+  `metrics`, `serve` (see README).
 - **`config.py`** — all knobs. `.env` (never committed) supplies `PULSE_MODE`, `BLUESKY_*`,
   `ANTHROPIC_API_KEY`.
 

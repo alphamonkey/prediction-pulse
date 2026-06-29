@@ -90,6 +90,16 @@ PULSE_CATEGORIES = (
 )
 MIN_MARKET_VOLUME_24H = 100.0    # contracts traded in the last 24h (tunable; live data shows tens-to-hundreds typical)
 
+# ── Trend poller (Bluesky-trend-selected Kalshi markets; peer to the broad allowlist poll) ──
+TREND_INTERVAL_SECONDS = 900     # `pulse run --source trend` cadence: 15 min
+TREND_LIMIT = 25                 # Bluesky trends pulled per cycle
+TREND_MAX_MARKETS = 60           # cap snapshots/cycle (top-N by volume) — bounds bloat even when a
+                                 # huge trend like "World Cup" maps to hundreds of markets
+TREND_MIN_VOLUME_24H = MIN_MARKET_VOLUME_24H  # volume floor for trend-matched markets
+# NO category allowlist here — trend-relevance is the filter — but keep the project's agri/food
+# exclusion. (Verify the exact Kalshi category name(s) against live data when tuning.)
+TREND_EXCLUDE_CATEGORIES = ("Agriculture",)
+
 # ── HTTP client resilience ──
 HTTP_TIMEOUT_SECONDS = 10.0
 HTTP_MAX_RETRIES = 3

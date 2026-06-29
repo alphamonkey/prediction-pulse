@@ -29,6 +29,7 @@ from pulse.scheduler.interval import IntervalScheduler
 from pulse.scheduler.windowed import WindowedScheduler
 from pulse.store.db import Database
 from pulse.venue.kalshi import KalshiClient, KalshiSource
+from pulse.venue.trending import BlueskyTrendClient, BlueskyTrendSource
 from pulse.writer.base import Writer
 from pulse.writer.claude import ClaudeWriter
 from pulse.writer.template import TemplateWriter
@@ -36,22 +37,31 @@ from pulse.writer.template import TemplateWriter
 log = logging.getLogger("pulse")
 
 
+def _make_source(source_name: str, kalshi_client: KalshiClient):
+    """The broad category-allowlist source, or the Bluesky-trend-selected peer. Both yield
+    `venue="kalshi"` snapshots, so the store + detector are unchanged either way."""
+    if source_name == "trend":
+        return BlueskyTrendSource(
+            BlueskyTrendClient(config.BLUESKY_HANDLE, config.BLUESKY_APP_PASSWORD), kalshi_client)
+    return KalshiSource(kalshi_client)
+
+
 @contextlib.contextmanager
-def _poll_job():
+def _poll_job(source_name: str = "kalshi"):
     db = Database(config.DB_PATH)
     db.connect()
     try:
         client = KalshiClient()
         try:
-            yield PollJob(KalshiSource(client), db)
+            yield PollJob(_make_source(source_name, client), db)
         finally:
             client.close()
     finally:
         db.close()
 
 
-def _run_poll() -> None:
-    with _poll_job() as job:
+def _run_poll(source_name: str = "kalshi") -> None:
+    with _poll_job(source_name) as job:
         job.run()
 
 
@@ -77,8 +87,8 @@ def _run_windowed(job, interval: int, windows, tz: str, max_iterations: int, jit
     ).run(_install_stop())
 
 
-def _run_loop(interval: int, max_iterations: int, jitter: int) -> None:
-    with _poll_job() as job:
+def _run_loop(interval: int, max_iterations: int, jitter: int, source_name: str = "kalshi") -> None:
+    with _poll_job(source_name) as job:
         _run_scheduled(job, interval, max_iterations, jitter)
 
 
@@ -187,8 +197,12 @@ def _run_draft(limit: int, persona_name: str, interval: int, max_iterations: int
 def cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="pulse")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("poll", help="Run one poll+detect cycle and exit (no publish).")
+    poll_p = sub.add_parser("poll", help="Run one poll+detect cycle and exit (no publish).")
+    poll_p.add_argument("--source", choices=("kalshi", "trend"), default="kalshi",
+                        help="Market selection: broad allowlist (kalshi) or Bluesky-trend-selected (trend).")
     run_p = sub.add_parser("run", help="Poll+detect on a cadence until stopped (no publish).")
+    run_p.add_argument("--source", choices=("kalshi", "trend"), default="kalshi",
+                       help="Market selection: broad allowlist (kalshi) or Bluesky-trend-selected (trend).")
     run_p.add_argument("--interval", type=int, default=config.DEFAULT_INTERVAL_SECONDS,
                        help="Seconds between cycles (default: %(default)s).")
     run_p.add_argument("--max-iterations", type=int, default=0,
@@ -246,9 +260,9 @@ def cli(argv: list[str] | None = None) -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.command == "poll":
-        _run_poll()
+        _run_poll(args.source)
     elif args.command == "run":
-        _run_loop(args.interval, args.max_iterations, args.jitter)
+        _run_loop(args.interval, args.max_iterations, args.jitter, args.source)
     elif args.command == "draft":
         _run_draft(args.limit, args.persona, args.interval, args.max_iterations, args.jitter)
     elif args.command == "publish":
