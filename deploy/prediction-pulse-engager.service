@@ -10,7 +10,7 @@ WorkingDirectory=/home/pi/Projects/prediction-pulse
 # SAFETY: takes real actions only when PULSE_MODE=live in .env; dryrun (the default) just logs
 # "would like/repost ...". Enabled signals + per-action daily caps live in config.py
 # (follows are OFF by default). Topic queries + the relevance/safety denylist are config too.
-ExecStart=/home/pi/Projects/prediction-pulse/.venv/bin/pulse engage --interval 3600 --jitter 600 --limit 25
+ExecStart=/home/pi/Projects/prediction-pulse/.venv/bin/pulse engage --interval 3600 --jitter 600 --limit 5
 Restart=on-failure
 RestartSec=30
 
