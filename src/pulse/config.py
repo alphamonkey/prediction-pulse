@@ -104,9 +104,14 @@ TREND_EXCLUDE_CATEGORIES = ("Agriculture",)
 HTTP_TIMEOUT_SECONDS = 10.0
 HTTP_MAX_RETRIES = 3
 
-# ── Dashboard (read-only) ──
+# ── Dashboard (read-only over the DB; MAY also live-fetch small ephemeral data — see memory
+#    `dashboard-external-fetch-ok`) ──
 DASHBOARD_HOST = os.environ.get("PULSE_DASHBOARD_HOST", "127.0.0.1")
 DASHBOARD_PORT = int(os.environ.get("PULSE_DASHBOARD_PORT", "8440"))
+# Trending-topics widget: fetch live from Bluesky, cached server-side so viewers/refreshes don't
+# hammer the (unspecced) endpoint. Ephemeral — not persisted, no history.
+DASHBOARD_TRENDS_TTL_SECONDS = 300  # re-fetch trends at most once per 5 min
+DASHBOARD_TRENDS_LIMIT = 10         # trends shown in the widget
 
 # ── Writer / persona ──
 PERSONAS_DIR = os.environ.get("PULSE_PERSONAS_DIR", "personas")

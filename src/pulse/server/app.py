@@ -7,6 +7,8 @@ alongside the writer/poller. Mirrors kalshi-edge's server.
 
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -14,16 +16,25 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from pulse import config
 from pulse.store.db import Database
+from pulse.venue.trending import BlueskyTrendClient
 
 STATIC = Path(__file__).parent / "static"
 
 
-def create_app() -> FastAPI:
+def create_app(trend_client: BlueskyTrendClient | None = None) -> FastAPI:
     # Ensure the DB file + schema exist once (read-only open fails on a missing/old schema);
     # this also creates the `drafts` table on a DB whose service predates it.
     boot = Database(config.DB_PATH)
     boot.connect()
     boot.close()
+
+    # Live Bluesky trends for the widget — ephemeral, not persisted (see memory
+    # `dashboard-external-fetch-ok`). One lazy-login client shared across requests, with a
+    # server-side TTL cache + lock (uvicorn runs sync endpoints in a threadpool).
+    trends_client = trend_client or BlueskyTrendClient(
+        config.BLUESKY_HANDLE, config.BLUESKY_APP_PASSWORD)
+    trends_cache: dict = {"at": 0.0, "data": []}
+    trends_lock = threading.Lock()
 
     app = FastAPI(title="prediction-pulse", docs_url="/api/docs")
 
@@ -76,6 +87,20 @@ def create_app() -> FastAPI:
             return JSONResponse(db.top_posts(limit))
         finally:
             db.close()
+
+    @app.get("/api/trends")
+    def trends(limit: int = config.DASHBOARD_TRENDS_LIMIT) -> JSONResponse:
+        with trends_lock:
+            if time.monotonic() - trends_cache["at"] >= config.DASHBOARD_TRENDS_TTL_SECONDS:
+                fetched = trends_client.get_trends(limit=config.DASHBOARD_TRENDS_LIMIT)
+                # Generic shape so a second platform (X/Google) slots in with no UI change.
+                trends_cache["data"] = [
+                    {"name": t.display_name, "post_count": t.post_count,
+                     "category": t.category, "platform": "bluesky"}
+                    for t in fetched
+                ]
+                trends_cache["at"] = time.monotonic()  # cache empties too — bounds retry on outages
+            return JSONResponse(trends_cache["data"][:limit])
 
     @app.get("/")
     def index() -> FileResponse:

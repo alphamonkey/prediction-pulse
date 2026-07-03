@@ -71,6 +71,11 @@
       </div>
 
       <div class="card rounded-xl p-4">
+        <h3 class="font-semibold mb-3">Trending on Bluesky <span class="text-slate-500 text-sm font-normal">what markets are selected from</span></h3>
+        <div id="trends" class="flex flex-wrap gap-2"></div>
+      </div>
+
+      <div class="card rounded-xl p-4">
         <h3 class="font-semibold mb-3">Events by rule</h3>
         <canvas id="rule-chart" height="80"></canvas>
       </div>
@@ -212,6 +217,14 @@
           `<tr><td class="text-slate-500 mono whitespace-nowrap">${t(d.created_at)}</td>`
           + `<td class="text-slate-400">${esc(d.persona)}</td><td>${esc(d.text)}</td></tr>`
         ).join("");
+
+        const trends = await f("/api/trends");
+        $("trends").innerHTML = trends.map((tr) =>
+          `<span class="inline-flex items-baseline gap-2 rounded-lg px-3 py-1.5" style="background:#0f1620;border:1px solid #1f2933">`
+          + `<span>${esc(tr.name)}</span>`
+          + `<span class="text-slate-500 text-xs mono">${n(tr.post_count)} posts${tr.category ? " · " + esc(tr.category) : ""}</span>`
+          + `</span>`
+        ).join("") || `<span class="text-slate-500 text-sm">no trends available</span>`;
       } catch (err) {
         console.error(err);
       }
