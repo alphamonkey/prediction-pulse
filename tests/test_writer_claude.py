@@ -91,6 +91,6 @@ def test_usage_is_tracked():
 
 
 def test_missing_api_key_raises(monkeypatch):
-    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     with pytest.raises(RuntimeError):
         ClaudeWriter()  # no injected client, no key

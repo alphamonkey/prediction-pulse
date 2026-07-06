@@ -73,5 +73,5 @@ class PublishJob:
             agg.would_post += r.would_post
             agg.posts += r.posts
         log.info("publish complete (mode=%s, persona=%s): %d posted, %d would-post",
-                 config.PULSE_MODE, self._persona.name, agg.posted, agg.would_post)
+                 config.pulse_mode(), self._persona.name, agg.posted, agg.would_post)
         return agg

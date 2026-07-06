@@ -37,7 +37,7 @@ def test_metrics_one_shot(monkeypatch):
             calls["ran"] = True
 
     monkeypatch.setattr(main, "MetricsJob", FakeJob)
-    monkeypatch.setattr(config, "BLUESKY_HANDLE", "gnome.bsky.social")
+    monkeypatch.setenv("BLUESKY_HANDLE", "gnome.bsky.social")
 
     main.cli(["metrics", "--limit", "7"])
 

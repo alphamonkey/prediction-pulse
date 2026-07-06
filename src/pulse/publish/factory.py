@@ -20,13 +20,13 @@ def make_publisher(channel: dict) -> Publisher:
     if platform not in _KNOWN:
         raise ValueError(f"unknown publish platform: {platform!r}")
 
-    if config.PULSE_MODE != "live":
+    if config.pulse_mode() != "live":
         return DryRunPublisher(platform)
 
     if platform == "bluesky":
-        handle = channel.get("handle") or config.BLUESKY_HANDLE
-        if not config.BLUESKY_APP_PASSWORD:
+        handle = channel.get("handle") or config.bluesky_handle()
+        if not config.bluesky_app_password():
             raise RuntimeError("BLUESKY_APP_PASSWORD not set — cannot publish live to Bluesky.")
-        return BlueskyPublisher(handle, config.BLUESKY_APP_PASSWORD)
+        return BlueskyPublisher(handle, config.bluesky_app_password())
 
     raise ValueError(f"unknown publish platform: {platform!r}")  # pragma: no cover

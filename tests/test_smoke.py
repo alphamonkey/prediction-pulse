@@ -10,11 +10,8 @@ def test_package_version():
 
 def test_defaults_to_dryrun(monkeypatch):
     # Safe default: never publish until explicitly set to live.
-    import importlib
-
     monkeypatch.delenv("PULSE_MODE", raising=False)
-    importlib.reload(config)
-    assert config.PULSE_MODE == "dryrun"
+    assert config.pulse_mode() == "dryrun"
 
 
 def test_detector_thresholds_are_sane():

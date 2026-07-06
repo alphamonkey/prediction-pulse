@@ -47,7 +47,7 @@ class PollJob:
         report = poll_once(self._source, self._db)
         log.info(
             "poll complete (mode=%s): %d markets, %d new snapshots, %d events",
-            config.PULSE_MODE, report.markets_seen, report.snapshots_stored, len(report.events),
+            config.pulse_mode(), report.markets_seen, report.snapshots_stored, len(report.events),
         )
         for ev in report.events:
             log.info("  [%s] %s", ev.rule, ev.headline)

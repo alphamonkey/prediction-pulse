@@ -11,21 +11,37 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Mode ──
-# Start in dry-run: detect events and draft posts, but DO NOT publish. Flip to "live" only
-# after reviewing the generated copy.
-PULSE_MODE = os.environ.get("PULSE_MODE", "dryrun").lower()  # "dryrun" | "live"
+# ── Env-derived values: lazy accessors, never bound at import ──
+# Per-persona env (secrets/<name>.env) is loaded at runtime, after this module has long been
+# imported — so mode/credential/path lookups must read os.environ at CALL time.
 
-# ── Bluesky (atproto) ──
-BLUESKY_HANDLE = os.environ.get("BLUESKY_HANDLE", "")
-BLUESKY_APP_PASSWORD = os.environ.get("BLUESKY_APP_PASSWORD", "")
+
+def pulse_mode() -> str:
+    """"dryrun" | "live". Start in dry-run: detect events and draft posts, but DO NOT publish.
+    Flip to "live" only after reviewing the generated copy."""
+    return os.environ.get("PULSE_MODE", "dryrun").lower()
+
+
+def bluesky_handle() -> str:
+    return os.environ.get("BLUESKY_HANDLE", "")
+
+
+def bluesky_app_password() -> str:
+    return os.environ.get("BLUESKY_APP_PASSWORD", "")
+
+
+def anthropic_api_key() -> str:
+    return os.environ.get("ANTHROPIC_API_KEY", "")
+
+
+def db_path() -> str:
+    return os.environ.get("PULSE_DB_PATH", "prediction_pulse.db")
+
 
 # ── Claude (post copy only — never the detector) ──
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 WRITER_MODEL = "claude-haiku-4-5-20251001"  # cheap; this is a language task, low volume
 
 # ── Persistence ──
-DB_PATH = os.environ.get("PULSE_DB_PATH", "prediction_pulse.db")
 # Retention: market_snapshots grows unbounded (one row per market per poll). The detector only ever
 # reads the last few hours per market, so days is a huge safety margin. `pulse prune` (daily timer)
 # drops rows older than this and reclaims the freed pages.

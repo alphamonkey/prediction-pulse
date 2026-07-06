@@ -67,7 +67,7 @@ class ClaudeWriter:
         max_tokens: int = config.WRITER_MAX_TOKENS,
     ) -> None:
         if client is None:
-            if not config.ANTHROPIC_API_KEY:
+            if not config.anthropic_api_key():
                 raise RuntimeError("ANTHROPIC_API_KEY not set — cannot use ClaudeWriter.")
             client = anthropic.Anthropic()
         self._client = client

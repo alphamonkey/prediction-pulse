@@ -35,14 +35,14 @@ def client(tmp_path, monkeypatch):
     db.insert_draft(Draft(event_dedup_key="k1", persona="example", text="A punchy post."))
     db.close()
 
-    monkeypatch.setattr(config, "DB_PATH", str(path))
+    monkeypatch.setenv("PULSE_DB_PATH", str(path))
     from pulse.server.app import create_app
     return TestClient(create_app())
 
 
 def test_stats_endpoint(client):
     r = client.get("/api/stats").json()
-    assert r["mode"] == config.PULSE_MODE
+    assert r["mode"] == config.pulse_mode()
     assert r["snapshots"] == 2
     assert r["markets_tracked"] == 2
     assert r["events_total"] == 2

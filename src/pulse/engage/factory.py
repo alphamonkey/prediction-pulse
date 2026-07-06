@@ -21,8 +21,8 @@ def make_target_source(channel: dict, policy) -> TargetSource:
     finds targets so you can preview what it *would* engage. (Needs Bluesky creds to search.)"""
     platform = channel.get("platform")
     if platform == "bluesky":
-        handle = channel.get("handle") or config.BLUESKY_HANDLE
-        return TopicalSearchSource(handle, config.BLUESKY_APP_PASSWORD, queries=policy.queries)
+        handle = channel.get("handle") or config.bluesky_handle()
+        return TopicalSearchSource(handle, config.bluesky_app_password(), queries=policy.queries)
     raise ValueError(f"unknown engage platform: {platform!r}")
 
 
@@ -31,13 +31,13 @@ def make_engager(channel: dict) -> Engager:
     if platform not in _KNOWN:
         raise ValueError(f"unknown engage platform: {platform!r}")
 
-    if config.PULSE_MODE != "live":
+    if config.pulse_mode() != "live":
         return DryRunEngager(platform)
 
     if platform == "bluesky":
-        handle = channel.get("handle") or config.BLUESKY_HANDLE
-        if not config.BLUESKY_APP_PASSWORD:
+        handle = channel.get("handle") or config.bluesky_handle()
+        if not config.bluesky_app_password():
             raise RuntimeError("BLUESKY_APP_PASSWORD not set — cannot engage live on Bluesky.")
-        return BlueskySignalEngager(handle, config.BLUESKY_APP_PASSWORD)
+        return BlueskySignalEngager(handle, config.bluesky_app_password())
 
     raise ValueError(f"unknown engage platform: {platform!r}")  # pragma: no cover

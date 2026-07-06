@@ -81,25 +81,25 @@ def test_dryrun_performs_nothing():
 
 # ── make_engager (the live gate) ──
 def test_make_engager_dryrun_returns_dryrun(monkeypatch):
-    monkeypatch.setattr(config, "PULSE_MODE", "dryrun")
+    monkeypatch.setenv("PULSE_MODE", "dryrun")
     assert isinstance(make_engager({"platform": "bluesky"}), DryRunEngager)
 
 
 def test_make_engager_live_returns_bluesky(monkeypatch):
-    monkeypatch.setattr(config, "PULSE_MODE", "live")
-    monkeypatch.setattr(config, "BLUESKY_APP_PASSWORD", "pw")
-    monkeypatch.setattr(config, "BLUESKY_HANDLE", "h.bsky.social")
+    monkeypatch.setenv("PULSE_MODE", "live")
+    monkeypatch.setenv("BLUESKY_APP_PASSWORD", "pw")
+    monkeypatch.setenv("BLUESKY_HANDLE", "h.bsky.social")
     assert isinstance(make_engager({"platform": "bluesky"}), BlueskySignalEngager)
 
 
 def test_make_engager_live_without_password_raises(monkeypatch):
-    monkeypatch.setattr(config, "PULSE_MODE", "live")
-    monkeypatch.setattr(config, "BLUESKY_APP_PASSWORD", "")
+    monkeypatch.setenv("PULSE_MODE", "live")
+    monkeypatch.setenv("BLUESKY_APP_PASSWORD", "")
     with pytest.raises(RuntimeError):
         make_engager({"platform": "bluesky", "handle": "h"})
 
 
 def test_make_engager_unknown_platform_raises(monkeypatch):
-    monkeypatch.setattr(config, "PULSE_MODE", "live")
+    monkeypatch.setenv("PULSE_MODE", "live")
     with pytest.raises(ValueError):
         make_engager({"platform": "myspace"})
