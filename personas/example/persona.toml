@@ -7,3 +7,42 @@ bio = "Faceless, data-driven prediction-market moves. Not financial advice."
 
 # Platform accounts this persona posts to. Filled in / used by the publisher chunk.
 channels = []
+
+# ── The stack this persona runs (read by `pulse supervise <name>`) ─────────────────────────────
+# A job runs iff its [pipeline.<job>] section is present; every field is optional and falls back
+# to the defaults in pulse/config.py. Delete sections your persona doesn't need — e.g. a
+# metrics-only lurker keeps just [pipeline.metrics].
+
+[pipeline.poll]
+sources = ["kalshi"]              # market selection: "kalshi" (category allowlist) | "trend"
+                                  # (Bluesky-trend-selected); list several to run both
+interval = 900                    # seconds between poll cycles
+# jitter = 0                      # max extra random seconds per cycle
+
+[pipeline.draft]
+interval = 3600
+# limit = 9                       # max events sent to the writer per cycle
+
+[pipeline.publish]
+interval = 14400
+jitter = 600
+# Local ("HH:MM", "HH:MM") pairs in `tz`; end <= start wraps midnight; omit for the global
+# default windows. Outward actions only fire inside these windows (dayparting).
+windows = [["07:00", "10:00"], ["12:00", "14:00"], ["17:00", "22:00"]]
+tz = "America/New_York"
+# limit = 9                       # max posts per run (also capped by the daily limit)
+
+[pipeline.engage]
+interval = 3600
+jitter = 600
+windows = "publish"               # alias: reuse this persona's publish windows
+queries = ["kalshi", "prediction market", "polymarket"]   # search terms to FIND targets
+# allow = [...]                   # relevance allowlist; defaults to `queries`
+# deny  = [...]                   # safety denylist; defaults to the global lightning-rod list
+actions = ["like", "repost"]      # enabled signals, attempted in order ("follow" is flag-prone)
+# caps = { like = 30, repost = 5, follow = 10 }   # rolling-24h per-action caps
+# limit = 5                       # candidate targets pulled per cycle
+
+[pipeline.metrics]
+interval = 3600
+# post_limit = 50                 # recent posts to refresh engagement for each cycle

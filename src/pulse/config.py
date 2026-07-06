@@ -46,6 +46,8 @@ MAX_RECENT_SNAPSHOTS = 64                # cap loaded per market (INVARIANT: >> 
 # ── Cadence ──
 MAX_POSTS_PER_DAY = 9        # rate cap so the feed stays signal, not spam
 DEFAULT_INTERVAL_SECONDS = 900  # `pulse run` poll cadence: 15 min
+DRAFT_INTERVAL_SECONDS = 3600    # draft cadence: 1 h (matches the drafter service)
+PUBLISH_INTERVAL_SECONDS = 14400  # publish cadence: 4 h (matches the publisher service)
 
 # ── Metrics collection (engagement pull-back for the KPM dashboard) ──
 METRICS_INTERVAL_SECONDS = 3600  # `pulse metrics` cadence: 1 h

@@ -12,3 +12,31 @@ bio = "Faceless gnome flexing prediction-market moves from my mushroom-villa. Ka
 [[channels]]
 platform = "bluesky"
 handle = "avariciousgnome.bsky.social"
+
+# ── The stack this persona runs (read by `pulse supervise gnome`) ──────────────────────────────
+# Mirrors the live per-stage services as of 2026-07: trend poller 15 min; drafter 1 h;
+# publisher 4 h + jitter inside ET windows; engager 1 h + jitter, signals only; metrics 1 h.
+# Prune runs daily inside the supervisor automatically.
+
+[pipeline.poll]
+sources = ["trend"]
+interval = 900
+
+[pipeline.draft]
+interval = 3600
+
+[pipeline.publish]
+interval = 14400
+jitter = 600
+windows = [["07:00", "10:00"], ["12:00", "14:00"], ["17:00", "22:00"]]
+tz = "America/New_York"
+
+[pipeline.engage]
+interval = 3600
+jitter = 600
+windows = "publish"
+queries = ["kalshi", "prediction market", "polymarket"]
+actions = ["like", "repost"]
+
+[pipeline.metrics]
+interval = 3600

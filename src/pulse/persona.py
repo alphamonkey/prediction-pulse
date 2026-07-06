@@ -1,10 +1,11 @@
-"""Persona — the brand a writer speaks as: voice (system prompt) + identity + channels.
+"""Persona — the brand a writer speaks as, and the container that declares its stack.
 
 A persona is authored by the operator as files on disk:
     personas/<name>/system_prompt.md   # the voice (fed to the writer)
-    personas/<name>/persona.toml       # display_name, handle, avatar, bio, channels
+    personas/<name>/persona.toml       # display_name, handle, avatar, bio, channels, [pipeline.*]
 
-The writer reads `persona.voice`; the (future) publisher reads `persona.channels`.
+The writer reads `persona.voice`; the publisher reads `persona.channels`; the supervisor reads
+`persona.pipeline` (which jobs to run, on what cadence/policy — see pulse.pipeline).
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pulse.config import PERSONAS_DIR
+from pulse.pipeline import PipelineSpec, parse_pipeline
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,7 @@ class Persona:
     avatar: str | None = None
     bio: str | None = None
     channels: list = field(default_factory=list)  # publisher fills these in later
+    pipeline: PipelineSpec = field(default_factory=PipelineSpec)  # the stack this persona runs
 
 
 def load_persona(name: str, *, root: str | Path = PERSONAS_DIR) -> Persona:
@@ -40,4 +43,5 @@ def load_persona(name: str, *, root: str | Path = PERSONAS_DIR) -> Persona:
         avatar=meta.get("avatar"),
         bio=meta.get("bio"),
         channels=list(meta.get("channels", [])),
+        pipeline=parse_pipeline(meta.get("pipeline", {})),
     )
