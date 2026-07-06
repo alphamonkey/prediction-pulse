@@ -26,6 +26,8 @@
         <p class="text-slate-500 text-sm">read-only monitor · refreshes every 15s</p>
       </div>
       <div class="flex items-center gap-3 text-sm">
+        <select id="persona-picker" class="hidden rounded px-2 py-1 text-sm"
+                style="background:#131a22;border:1px solid #1f2933;color:#d8dee9"></select>
         <span id="mode" class="px-2 py-1 rounded bg-slate-700 uppercase text-xs tracking-wide">–</span>
         <span class="text-slate-500">last poll <span id="last-poll" class="mono">–</span></span>
       </div>
@@ -101,7 +103,27 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
-    const f = (u) => fetch(u).then((r) => r.json());
+    // Which persona this page is looking at — kept in the query string so views are linkable.
+    let persona = new URLSearchParams(location.search).get("persona");
+    const f = (u) => {
+      if (persona) u += (u.includes("?") ? "&" : "?") + "persona=" + encodeURIComponent(persona);
+      return fetch(u).then((r) => r.json());
+    };
+
+    async function initPersonas() {
+      const info = await fetch("/api/personas").then((r) => r.json());
+      if (!info.personas.length) return;         // legacy single-DB layout
+      if (!info.personas.includes(persona)) persona = info.default;
+      const picker = $("persona-picker");
+      picker.innerHTML = info.personas.map((p) =>
+        `<option value="${p}"${p === persona ? " selected" : ""}>${p}</option>`).join("");
+      if (info.personas.length > 1) picker.classList.remove("hidden");
+      picker.addEventListener("change", () => {
+        persona = picker.value;
+        history.replaceState(null, "", "?persona=" + encodeURIComponent(persona));
+        refresh();
+      });
+    }
     const esc = (s) => (s ?? "").toString().replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
     const t = (iso) => (iso ? new Date(iso).toLocaleString() : "–");
     const n = (v) => (v ?? 0).toLocaleString();
@@ -230,7 +252,7 @@
       }
     }
 
-    refresh();
+    initPersonas().catch(console.error).finally(refresh);
     setInterval(refresh, 15000);
   </script>
 </body>
