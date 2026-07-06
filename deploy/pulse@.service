@@ -1,0 +1,25 @@
+[Unit]
+Description=pulse persona supervisor (%i) — runs everything personas/%i/persona.toml declares
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/Projects/prediction-pulse
+# Per-persona secrets: BLUESKY_HANDLE/APP_PASSWORD, ANTHROPIC_API_KEY, PULSE_MODE (a persona can
+# be dryrun while others are live). Optional ("-"): a credential-less persona still supervises.
+# The CLI loads the same file itself, so a manual `pulse supervise %i` behaves identically.
+EnvironmentFile=-/home/pi/Projects/prediction-pulse/secrets/%i.env
+ExecStart=/home/pi/Projects/prediction-pulse/.venv/bin/pulse supervise %i
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+
+# Adding a persona:
+#   1. personas/<name>/{system_prompt.md,persona.toml}   (with a [pipeline] block)
+#   2. secrets/<name>.env                                (copy deploy/persona.env.example)
+#   3. sudo systemctl enable --now pulse@<name>
+# Logs: journalctl -u pulse@<name> -f
