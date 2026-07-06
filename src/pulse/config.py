@@ -35,7 +35,22 @@ def anthropic_api_key() -> str:
 
 
 def db_path() -> str:
+    """Legacy single-DB path (pre-persona layout). New code should use db_path_for()."""
     return os.environ.get("PULSE_DB_PATH", "prediction_pulse.db")
+
+
+def data_dir() -> str:
+    """Where per-persona DBs live: <data_dir>/<persona>.db."""
+    return os.environ.get("PULSE_DATA_DIR", "data")
+
+
+def db_path_for(persona_name: str) -> str:
+    """The persona's own DB. PULSE_DB_PATH pins every persona to one file when set — the
+    transition escape hatch (and how tests point at a temp file)."""
+    override = os.environ.get("PULSE_DB_PATH")
+    if override:
+        return override
+    return os.path.join(data_dir(), f"{persona_name}.db")
 
 
 # ── Claude (post copy only — never the detector) ──

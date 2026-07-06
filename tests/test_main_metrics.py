@@ -38,6 +38,11 @@ def test_metrics_one_shot(monkeypatch):
 
     monkeypatch.setattr(main, "MetricsJob", FakeJob)
     monkeypatch.setenv("BLUESKY_HANDLE", "gnome.bsky.social")
+    # A persona with no channels falls back to the global handle (and pins the test
+    # against whatever PULSE_PERSONA the ambient .env selects).
+    from pulse.persona import Persona
+    monkeypatch.setattr(main, "load_persona",
+                        lambda name: Persona(name=name, voice="v", channels=[]))
 
     main.cli(["metrics", "--limit", "7"])
 
@@ -87,3 +92,35 @@ def test_metrics_loop_drives_scheduler(monkeypatch):
     assert calls["jitter"] == 120
     assert calls["scheduler_ran"] is True
     assert calls["closed"] is True
+
+
+def test_metrics_uses_the_personas_channel_handle_and_db(monkeypatch):
+    calls = {}
+    _metrics_fakes(monkeypatch, calls)
+
+    class PathDB:
+        def __init__(self, path, *a, **k):
+            calls["db_path"] = path
+
+        def connect(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(main, "Database", PathDB)
+    monkeypatch.setattr(
+        main, "MetricsJob",
+        lambda db, source, *, handle, post_limit: SimpleNamespace(
+            name="metrics", run=lambda: calls.update(handle=handle)))
+    from pulse.persona import Persona
+    monkeypatch.setattr(main, "load_persona", lambda name: Persona(
+        name=name, voice="v",
+        channels=[{"platform": "bluesky", "handle": f"{name}.bsky.social"}]))
+    monkeypatch.setenv("BLUESKY_HANDLE", "global.bsky.social")
+    monkeypatch.delenv("PULSE_DB_PATH", raising=False)
+
+    main.cli(["metrics", "--persona", "alpha"])
+    assert calls["handle"] == "alpha.bsky.social"
+    assert calls["db_path"] == config.db_path_for("alpha")
+    assert calls["db_path"].endswith("alpha.db")

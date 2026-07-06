@@ -41,14 +41,6 @@ class SupervisedJob:
     scheduler: Scheduler
 
 
-def _bluesky_handle_for(persona: Persona) -> str:
-    """The persona's own bluesky handle (mirrors how PublishJob picks its account)."""
-    for channel in persona.channels:
-        if channel.get("platform") == "bluesky" and channel.get("handle"):
-            return channel["handle"]
-    return config.bluesky_handle()
-
-
 def build_supervised(
     persona: Persona, db: Database, *, kalshi_client: KalshiClient | None = None,
     max_iterations: int = 0,
@@ -92,7 +84,7 @@ def build_supervised(
 
     if spec.metrics:
         job = MetricsJob(db, make_engagement_source("bluesky"),
-                         handle=_bluesky_handle_for(persona),
+                         handle=persona.channel_handle("bluesky"),
                          post_limit=spec.metrics.post_limit)
         entries.append(SupervisedJob("metrics", job, IntervalScheduler(
             job, spec.metrics.interval,

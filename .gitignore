@@ -8,8 +8,9 @@ build/
 venv/
 .pytest_cache/
 
-# Secrets & credentials
+# Secrets & credentials (secrets/ holds per-persona env files: secrets/<name>.env)
 .env
+secrets/
 *.pem
 *.key
 

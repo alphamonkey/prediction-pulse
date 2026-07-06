@@ -286,3 +286,25 @@ def test_publish_loop_drives_scheduler(monkeypatch):
     assert calls["tz"] == config.ACTIVE_TZ
     assert calls["scheduler_ran"] is True
     assert calls["closed"] is True
+
+
+def test_draft_opens_the_personas_db(monkeypatch):
+    calls = {}
+    _draft_fakes(monkeypatch, calls)
+
+    class PathDB:
+        def __init__(self, path, *a, **k):
+            calls["db_path"] = path
+
+        def connect(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(main, "Database", PathDB)
+    monkeypatch.delenv("PULSE_DB_PATH", raising=False)
+
+    main.cli(["draft", "--persona", "alpha"])
+    assert calls["db_path"] == config.db_path_for("alpha")
+    assert calls["db_path"].endswith("alpha.db")
