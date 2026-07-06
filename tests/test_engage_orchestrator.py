@@ -125,6 +125,31 @@ def test_follow_is_keyed_on_did_and_idempotent(db):
     assert db.has_interacted("gnome", "bluesky", SignalKind.FOLLOW, target_did="did:plc:z")
 
 
+def test_engage_once_never_targets_self(db):
+    self_t = Target(uri="at://self", cid="c", author_did="did:self",
+                    author_handle="gnome.bsky.social", text="kalshi market move", source="s")
+    src = FakeSource([self_t, _t("at://other")])
+    eng = FakeEngager()
+    report = engage_once(db, src, eng, PERSONA, _policy(), limit=10,
+                         self_handles=("gnome.bsky.social",))
+    assert [c[1] for c in eng.calls] == ["at://other"]  # our own post is skipped
+    assert report.performed == 1
+
+
+def test_engage_job_never_targets_self(db, monkeypatch):
+    persona = Persona(name="gnome", voice="v",
+                      channels=[{"platform": "bluesky", "handle": "gnome.bsky.social"}])
+    eng = FakeEngager()
+    self_t = Target(uri="at://self", cid="c", author_did="did:self",
+                    author_handle="gnome.bsky.social", text="kalshi market move", source="s")
+    monkeypatch.setattr("pulse.engager.make_engager", lambda channel: eng)
+    monkeypatch.setattr("pulse.engager.make_target_source",
+                        lambda channel, policy: FakeSource([self_t, _t("at://other")]))
+    report = EngageJob(db, persona, _policy(), limit=10).run()
+    assert [c[1] for c in eng.calls] == ["at://other"]  # channel handle → self excluded end-to-end
+    assert report.performed == 1
+
+
 def test_engage_job_is_named_job_and_loops_channels(db, monkeypatch):
     eng = FakeEngager()
     monkeypatch.setattr("pulse.engager.make_engager", lambda channel: eng)

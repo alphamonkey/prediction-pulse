@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from pulse import config
 from pulse.engage.base import Engager, SignalKind, TargetSource
 from pulse.engage.factory import make_engager, make_target_source
 from pulse.engage.filter import filter_targets
@@ -41,10 +42,15 @@ class EngageReport:
 
 def engage_once(
     db: Database, source: TargetSource, engager: Engager, persona: Persona, policy: EngagePolicy,
-    *, limit: int,
+    *, limit: int, self_handles: tuple[str, ...] = (),
 ) -> EngageReport:
     channel = engager.name
-    targets = filter_targets(source.find_targets(limit=limit), allow=policy.allow, deny=policy.deny)
+    # Self is never a valid target (for now and always) — our own handle is excluded before any
+    # relevance/safety judgement, so we can't like/repost/follow ourselves.
+    targets = filter_targets(
+        source.find_targets(limit=limit),
+        allow=policy.allow, deny=policy.deny, exclude_handles=self_handles,
+    )
     report = EngageReport(targets=len(targets))
     for target in targets:
         for action in policy.actions:
@@ -91,7 +97,9 @@ class EngageJob:
         for channel in self._persona.channels:
             source = make_target_source(channel, self._policy)
             engager = make_engager(channel)
-            r = engage_once(self._db, source, engager, self._persona, self._policy, limit=self._limit)
+            self_handle = channel.get("handle") or config.BLUESKY_HANDLE
+            r = engage_once(self._db, source, engager, self._persona, self._policy,
+                            limit=self._limit, self_handles=(self_handle,))
             agg.targets += r.targets
             agg.performed += r.performed
             agg.would += r.would

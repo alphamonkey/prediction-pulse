@@ -78,3 +78,28 @@ def test_filter_targets_dedupes_by_uri_keeping_first():
     out = filter_targets(ts, allow=["kalshi"], deny=[])
     assert len(out) == 1
     assert out[0].text == "Kalshi move one"
+
+
+# ── self / excluded authors are never valid targets ──
+def test_passes_filter_rejects_excluded_author_even_if_relevant_and_safe():
+    t = _t("at://x/1", "Kalshi prediction market move", handle="gnome.bsky.social")
+    assert not passes_filter(t, allow=["kalshi"], deny=[], exclude_handles=["gnome.bsky.social"])
+
+
+def test_passes_filter_excluded_author_is_case_insensitive():
+    t = _t("at://x/1", "Kalshi move", handle="Gnome.BSKY.social")
+    assert not passes_filter(t, allow=["kalshi"], deny=[], exclude_handles=["gnome.bsky.social"])
+
+
+def test_passes_filter_keeps_other_authors_when_exclude_set():
+    t = _t("at://x/1", "Kalshi move", handle="someone-else.bsky.social")
+    assert passes_filter(t, allow=["kalshi"], deny=[], exclude_handles=["gnome.bsky.social"])
+
+
+def test_filter_targets_drops_self_authored():
+    ts = [
+        _t("at://x/1", "Kalshi move", handle="gnome.bsky.social"),   # us
+        _t("at://x/2", "Kalshi move", handle="rando.bsky.social"),   # someone else
+    ]
+    out = filter_targets(ts, allow=["kalshi"], deny=[], exclude_handles=["gnome.bsky.social"])
+    assert [t.uri for t in out] == ["at://x/2"]
