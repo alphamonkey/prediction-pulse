@@ -97,7 +97,7 @@ class EngageJob:
         for channel in self._persona.channels:
             source = make_target_source(channel, self._policy)
             engager = make_engager(channel)
-            self_handle = channel.get("handle") or config.BLUESKY_HANDLE
+            self_handle = channel.get("handle") or config.bluesky_handle()
             r = engage_once(self._db, source, engager, self._persona, self._policy,
                             limit=self._limit, self_handles=(self_handle,))
             agg.targets += r.targets

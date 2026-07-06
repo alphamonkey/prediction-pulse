@@ -30,7 +30,7 @@ def client(tmp_path, monkeypatch):
                                            {MetricKind.LIKES: 10, MetricKind.REPLIES: 2})])
     db.close()
 
-    monkeypatch.setattr(config, "DB_PATH", str(path))
+    monkeypatch.setenv("PULSE_DB_PATH", str(path))
     from pulse.server.app import create_app
     return TestClient(create_app())
 

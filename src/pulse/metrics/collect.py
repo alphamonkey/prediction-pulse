@@ -27,7 +27,7 @@ def collect_once(db: Database, source: EngagementSource, *, handle: str,
                  post_limit: int) -> MetricsReport:
     if not source.supported_metrics:
         log.info("metrics: %s source is inert (mode=%s) — nothing collected",
-                 source.name, config.PULSE_MODE)
+                 source.name, config.pulse_mode())
         return MetricsReport()
 
     stats = source.account(handle)

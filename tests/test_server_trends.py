@@ -30,7 +30,7 @@ class FakeTrendClient:
 @pytest.fixture
 def boot_db(tmp_path, monkeypatch):
     # create_app boots a DB (schema); point it at a temp path.
-    monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "dash.db"))
+    monkeypatch.setenv("PULSE_DB_PATH", str(tmp_path / "dash.db"))
 
 
 def _client(boot_db, trend_client):

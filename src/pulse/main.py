@@ -43,13 +43,13 @@ def _make_source(source_name: str, kalshi_client: KalshiClient):
     `venue="kalshi"` snapshots, so the store + detector are unchanged either way."""
     if source_name == "trend":
         return BlueskyTrendSource(
-            BlueskyTrendClient(config.BLUESKY_HANDLE, config.BLUESKY_APP_PASSWORD), kalshi_client)
+            BlueskyTrendClient(config.bluesky_handle(), config.bluesky_app_password()), kalshi_client)
     return KalshiSource(kalshi_client)
 
 
 @contextlib.contextmanager
 def _poll_job(source_name: str = "kalshi"):
-    db = Database(config.DB_PATH)
+    db = Database(config.db_path())
     db.connect()
     try:
         client = KalshiClient()
@@ -96,13 +96,13 @@ def _run_loop(interval: int, max_iterations: int, jitter: int, source_name: str 
 def _run_publish(limit: int, persona_name: str, interval: int, max_iterations: int,
                  jitter: int) -> None:
     persona = load_persona(persona_name)
-    db = Database(config.DB_PATH)
+    db = Database(config.db_path())
     db.connect()
     try:
         job = PublishJob(db, persona, limit=limit)
         if interval > 0:
             log.info("publishing every %ds within windows (persona=%s, mode=%s)",
-                     interval, persona.name, config.PULSE_MODE)
+                     interval, persona.name, config.pulse_mode())
             _run_windowed(job, interval, config.PUBLISH_WINDOWS, config.ACTIVE_TZ,
                           max_iterations, jitter)
         else:
@@ -112,14 +112,14 @@ def _run_publish(limit: int, persona_name: str, interval: int, max_iterations: i
 
 
 def _run_metrics(post_limit: int, interval: int, max_iterations: int, jitter: int) -> None:
-    db = Database(config.DB_PATH)
+    db = Database(config.db_path())
     db.connect()
     try:
         source = make_engagement_source("bluesky")
-        job = MetricsJob(db, source, handle=config.BLUESKY_HANDLE, post_limit=post_limit)
+        job = MetricsJob(db, source, handle=config.bluesky_handle(), post_limit=post_limit)
         if interval > 0:
             log.info("collecting metrics every %ds (platform=%s, mode=%s)",
-                     interval, source.name, config.PULSE_MODE)
+                     interval, source.name, config.pulse_mode())
             _run_scheduled(job, interval, max_iterations, jitter)
         else:
             job.run()
@@ -150,13 +150,13 @@ def _run_engage(limit: int, persona_name: str, interval: int, max_iterations: in
     # tracks moving persona reload per-cycle across all the long-running jobs.
     persona = load_persona(persona_name)
     policy = _engage_policy()
-    db = Database(config.DB_PATH)
+    db = Database(config.db_path())
     db.connect()
     try:
         job = EngageJob(db, persona, policy, limit=limit)
         if interval > 0:
             log.info("engaging every %ds within windows (persona=%s, mode=%s)",
-                     interval, persona.name, config.PULSE_MODE)
+                     interval, persona.name, config.pulse_mode())
             _run_windowed(job, interval, config.ENGAGE_WINDOWS, config.ACTIVE_TZ,
                           max_iterations, jitter)
         else:
@@ -166,7 +166,7 @@ def _run_engage(limit: int, persona_name: str, interval: int, max_iterations: in
 
 
 def _run_prune(retention_days: int) -> None:
-    db = Database(config.DB_PATH)
+    db = Database(config.db_path())
     db.connect()
     try:
         PruneJob(db, retention_days=retention_days).run()
@@ -181,20 +181,20 @@ def _run_vacuum() -> None:
     def _mb(path: str) -> float:
         return os.path.getsize(path) / 1e6 if os.path.exists(path) else 0.0
 
-    db = Database(config.DB_PATH)
+    db = Database(config.db_path())
     db.connect()
     try:
-        before = _mb(config.DB_PATH)
-        log.info("vacuum: compacting %s (%.1f MB) — needs an exclusive lock", config.DB_PATH, before)
+        before = _mb(config.db_path())
+        log.info("vacuum: compacting %s (%.1f MB) — needs an exclusive lock", config.db_path(), before)
         db.vacuum()
-        log.info("vacuum complete: %.1f MB -> %.1f MB", before, _mb(config.DB_PATH))
+        log.info("vacuum complete: %.1f MB -> %.1f MB", before, _mb(config.db_path()))
     finally:
         db.close()
 
 
 def make_writer() -> Writer:
     """ClaudeWriter when an API key is configured; the zero-cost template writer otherwise."""
-    if config.ANTHROPIC_API_KEY:
+    if config.anthropic_api_key():
         return ClaudeWriter()
     log.warning("ANTHROPIC_API_KEY not set — using the template writer (no LLM).")
     return TemplateWriter()
@@ -204,19 +204,19 @@ def _run_draft(limit: int, persona_name: str, interval: int, max_iterations: int
                jitter: int) -> None:
     persona = load_persona(persona_name)
     writer = make_writer()
-    db = Database(config.DB_PATH)
+    db = Database(config.db_path())
     db.connect()
     try:
         if interval > 0:
             log.info("drafting every %ds (persona=%s, writer=%s, mode=%s)",
-                     interval, persona.name, writer.name, config.PULSE_MODE)
+                     interval, persona.name, writer.name, config.pulse_mode())
             _run_scheduled(DraftJob(db, writer, persona, limit=limit), interval, max_iterations,
                            jitter)
         else:
             report = draft_once(db, writer, persona, limit=limit)
             log.info(
                 "draft complete (mode=%s, persona=%s, writer=%s): %d candidates, %d new drafts",
-                config.PULSE_MODE, persona.name, writer.name, report.candidates, report.drafted,
+                config.pulse_mode(), persona.name, writer.name, report.candidates, report.drafted,
             )
     finally:
         db.close()
