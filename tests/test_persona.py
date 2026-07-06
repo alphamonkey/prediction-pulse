@@ -46,3 +46,17 @@ def test_channels_parsed_when_present(tmp_path):
 def test_missing_persona_raises_clearly(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_persona("nope", root=tmp_path)
+
+
+def test_channel_handle_prefers_the_personas_bluesky_channel(monkeypatch):
+    monkeypatch.setenv("BLUESKY_HANDLE", "global.bsky.social")
+    p = Persona(name="x", voice="v",
+                channels=[{"platform": "x", "handle": "elsewhere"},
+                          {"platform": "bluesky", "handle": "mine.bsky.social"}])
+    assert p.channel_handle("bluesky") == "mine.bsky.social"
+
+
+def test_channel_handle_falls_back_to_global_config(monkeypatch):
+    monkeypatch.setenv("BLUESKY_HANDLE", "global.bsky.social")
+    p = Persona(name="x", voice="v", channels=[])
+    assert p.channel_handle("bluesky") == "global.bsky.social"

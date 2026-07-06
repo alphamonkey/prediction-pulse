@@ -29,6 +29,15 @@ class Persona:
     channels: list = field(default_factory=list)  # publisher fills these in later
     pipeline: PipelineSpec = field(default_factory=PipelineSpec)  # the stack this persona runs
 
+    def channel_handle(self, platform: str = "bluesky") -> str:
+        """The persona's own handle on a platform, falling back to the global credential
+        handle (how PublishJob/MetricsJob decide which account they speak for)."""
+        for channel in self.channels:
+            if channel.get("platform") == platform and channel.get("handle"):
+                return channel["handle"]
+        from pulse import config
+        return config.bluesky_handle()
+
 
 def load_persona(name: str, *, root: str | Path = PERSONAS_DIR) -> Persona:
     """Load a persona by name from `<root>/<name>/`. Raises FileNotFoundError if absent."""

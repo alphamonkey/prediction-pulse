@@ -54,3 +54,21 @@ def test_db_path_reflects_env(monkeypatch):
 def test_db_path_default(monkeypatch):
     monkeypatch.delenv("PULSE_DB_PATH", raising=False)
     assert config.db_path() == "prediction_pulse.db"
+
+
+def test_db_path_for_persona(monkeypatch):
+    monkeypatch.delenv("PULSE_DB_PATH", raising=False)
+    monkeypatch.delenv("PULSE_DATA_DIR", raising=False)
+    assert config.db_path_for("gnome") == "data/gnome.db"
+
+
+def test_db_path_for_respects_data_dir(monkeypatch):
+    monkeypatch.delenv("PULSE_DB_PATH", raising=False)
+    monkeypatch.setenv("PULSE_DATA_DIR", "/var/lib/pulse")
+    assert config.db_path_for("gnome") == "/var/lib/pulse/gnome.db"
+
+
+def test_db_path_for_escape_hatch_wins(monkeypatch):
+    # PULSE_DB_PATH pins every persona to one file (transition / tests / recovery).
+    monkeypatch.setenv("PULSE_DB_PATH", "/tmp/one.db")
+    assert config.db_path_for("gnome") == "/tmp/one.db"

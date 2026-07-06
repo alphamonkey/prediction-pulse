@@ -41,10 +41,18 @@ from pulse.writer.factory import make_writer
 log = logging.getLogger("pulse")
 
 
-@contextlib.contextmanager
-def _poll_job(source_name: str = "kalshi"):
-    db = Database(config.db_path())
+def _open_db(persona_name: str) -> Database:
+    """Open (creating if needed) the persona's own DB under the data dir."""
+    path = config.db_path_for(persona_name)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    db = Database(path)
     db.connect()
+    return db
+
+
+@contextlib.contextmanager
+def _poll_job(source_name: str, persona_name: str):
+    db = _open_db(persona_name)
     try:
         client = KalshiClient()
         try:
@@ -55,8 +63,8 @@ def _poll_job(source_name: str = "kalshi"):
         db.close()
 
 
-def _run_poll(source_name: str = "kalshi") -> None:
-    with _poll_job(source_name) as job:
+def _run_poll(source_name: str, persona_name: str) -> None:
+    with _poll_job(source_name, persona_name) as job:
         job.run()
 
 
@@ -82,16 +90,16 @@ def _run_windowed(job, interval: int, windows, tz: str, max_iterations: int, jit
     ).run(_install_stop())
 
 
-def _run_loop(interval: int, max_iterations: int, jitter: int, source_name: str = "kalshi") -> None:
-    with _poll_job(source_name) as job:
+def _run_loop(interval: int, max_iterations: int, jitter: int, source_name: str,
+              persona_name: str) -> None:
+    with _poll_job(source_name, persona_name) as job:
         _run_scheduled(job, interval, max_iterations, jitter)
 
 
 def _run_publish(limit: int, persona_name: str, interval: int, max_iterations: int,
                  jitter: int) -> None:
     persona = load_persona(persona_name)
-    db = Database(config.db_path())
-    db.connect()
+    db = _open_db(persona_name)
     try:
         job = PublishJob(db, persona, limit=limit)
         if interval > 0:
@@ -105,12 +113,14 @@ def _run_publish(limit: int, persona_name: str, interval: int, max_iterations: i
         db.close()
 
 
-def _run_metrics(post_limit: int, interval: int, max_iterations: int, jitter: int) -> None:
-    db = Database(config.db_path())
-    db.connect()
+def _run_metrics(post_limit: int, persona_name: str, interval: int, max_iterations: int,
+                 jitter: int) -> None:
+    persona = load_persona(persona_name)
+    db = _open_db(persona_name)
     try:
         source = make_engagement_source("bluesky")
-        job = MetricsJob(db, source, handle=config.bluesky_handle(), post_limit=post_limit)
+        job = MetricsJob(db, source, handle=persona.channel_handle("bluesky"),
+                         post_limit=post_limit)
         if interval > 0:
             log.info("collecting metrics every %ds (platform=%s, mode=%s)",
                      interval, source.name, config.pulse_mode())
@@ -144,8 +154,7 @@ def _run_engage(limit: int, persona_name: str, interval: int, max_iterations: in
     # tracks moving persona reload per-cycle across all the long-running jobs.
     persona = load_persona(persona_name)
     policy = _engage_policy()
-    db = Database(config.db_path())
-    db.connect()
+    db = _open_db(persona_name)
     try:
         job = EngageJob(db, persona, policy, limit=limit)
         if interval > 0:
@@ -159,29 +168,29 @@ def _run_engage(limit: int, persona_name: str, interval: int, max_iterations: in
         db.close()
 
 
-def _run_prune(retention_days: int) -> None:
-    db = Database(config.db_path())
-    db.connect()
+def _run_prune(retention_days: int, persona_name: str) -> None:
+    db = _open_db(persona_name)
     try:
         PruneJob(db, retention_days=retention_days).run()
     finally:
         db.close()
 
 
-def _run_vacuum() -> None:
+def _run_vacuum(persona_name: str) -> None:
     """One-time compaction of the on-disk file. Stop the writer services first (needs EXCLUSIVE)."""
     import os
 
     def _mb(path: str) -> float:
         return os.path.getsize(path) / 1e6 if os.path.exists(path) else 0.0
 
-    db = Database(config.db_path())
+    path = config.db_path_for(persona_name)
+    db = Database(path)
     db.connect()
     try:
-        before = _mb(config.db_path())
-        log.info("vacuum: compacting %s (%.1f MB) — needs an exclusive lock", config.db_path(), before)
+        before = _mb(path)
+        log.info("vacuum: compacting %s (%.1f MB) — needs an exclusive lock", path, before)
         db.vacuum()
-        log.info("vacuum complete: %.1f MB -> %.1f MB", before, _mb(config.db_path()))
+        log.info("vacuum complete: %.1f MB -> %.1f MB", before, _mb(path))
     finally:
         db.close()
 
@@ -195,8 +204,7 @@ def _run_supervise(persona_name: str, max_iterations: int) -> None:
         load_dotenv(secrets, override=True)
         log.info("loaded secrets from %s", secrets)
     persona = load_persona(persona_name)
-    db = Database(config.db_path())
-    db.connect()
+    db = _open_db(persona_name)
     try:
         supervise(persona, db, max_iterations=max_iterations, stop=_install_stop())
     finally:
@@ -207,8 +215,7 @@ def _run_draft(limit: int, persona_name: str, interval: int, max_iterations: int
                jitter: int) -> None:
     persona = load_persona(persona_name)
     writer = make_writer()
-    db = Database(config.db_path())
-    db.connect()
+    db = _open_db(persona_name)
     try:
         if interval > 0:
             log.info("drafting every %ds (persona=%s, writer=%s, mode=%s)",
@@ -236,9 +243,13 @@ def cli(argv: list[str] | None = None) -> None:
     poll_p = sub.add_parser("poll", help="Run one poll+detect cycle and exit (no publish).")
     poll_p.add_argument("--source", choices=("kalshi", "trend"), default="kalshi",
                         help="Market selection: broad allowlist (kalshi) or Bluesky-trend-selected (trend).")
+    poll_p.add_argument("--persona", default=config.PERSONA,
+                        help="Whose DB the snapshots land in (default: %(default)s).")
     run_p = sub.add_parser("run", help="Poll+detect on a cadence until stopped (no publish).")
     run_p.add_argument("--source", choices=("kalshi", "trend"), default="kalshi",
                        help="Market selection: broad allowlist (kalshi) or Bluesky-trend-selected (trend).")
+    run_p.add_argument("--persona", default=config.PERSONA,
+                       help="Whose DB the snapshots land in (default: %(default)s).")
     run_p.add_argument("--interval", type=int, default=config.DEFAULT_INTERVAL_SECONDS,
                        help="Seconds between cycles (default: %(default)s).")
     run_p.add_argument("--max-iterations", type=int, default=0,
@@ -279,6 +290,8 @@ def cli(argv: list[str] | None = None) -> None:
     eng_p.add_argument("--jitter", type=int, default=0,
                        help="Max extra random seconds added to each interval (default: 0).")
     met_p = sub.add_parser("metrics", help="Collect engagement back from the platform for the dashboard.")
+    met_p.add_argument("--persona", default=config.PERSONA,
+                       help="Persona name under personas/ (default: %(default)s).")
     met_p.add_argument("--limit", type=int, default=config.METRICS_POST_WINDOW,
                        help="Recent posts to refresh engagement for (default: %(default)s).")
     met_p.add_argument("--interval", type=int, default=0,
@@ -290,7 +303,11 @@ def cli(argv: list[str] | None = None) -> None:
     prune_p = sub.add_parser("prune", help="Delete market snapshots older than the retention horizon and reclaim space.")
     prune_p.add_argument("--retention-days", type=int, default=config.SNAPSHOT_RETENTION_DAYS,
                          help="Keep snapshots newer than this many days (default: %(default)s).")
-    sub.add_parser("vacuum", help="One-time: compact the DB file + convert to incremental auto_vacuum (stop writers first).")
+    prune_p.add_argument("--persona", default=config.PERSONA,
+                         help="Whose DB to prune (default: %(default)s).")
+    vac_p = sub.add_parser("vacuum", help="One-time: compact the DB file + convert to incremental auto_vacuum (stop writers first).")
+    vac_p.add_argument("--persona", default=config.PERSONA,
+                       help="Whose DB to compact (default: %(default)s).")
     serve_p = sub.add_parser("serve", help="Run the read-only monitoring dashboard.")
     serve_p.add_argument("--host", default=config.DASHBOARD_HOST,
                          help="Bind host (default: %(default)s).")
@@ -302,9 +319,9 @@ def cli(argv: list[str] | None = None) -> None:
     if args.command == "supervise":
         _run_supervise(args.persona, args.max_iterations)
     elif args.command == "poll":
-        _run_poll(args.source)
+        _run_poll(args.source, args.persona)
     elif args.command == "run":
-        _run_loop(args.interval, args.max_iterations, args.jitter, args.source)
+        _run_loop(args.interval, args.max_iterations, args.jitter, args.source, args.persona)
     elif args.command == "draft":
         _run_draft(args.limit, args.persona, args.interval, args.max_iterations, args.jitter)
     elif args.command == "publish":
@@ -312,11 +329,11 @@ def cli(argv: list[str] | None = None) -> None:
     elif args.command == "engage":
         _run_engage(args.limit, args.persona, args.interval, args.max_iterations, args.jitter)
     elif args.command == "metrics":
-        _run_metrics(args.limit, args.interval, args.max_iterations, args.jitter)
+        _run_metrics(args.limit, args.persona, args.interval, args.max_iterations, args.jitter)
     elif args.command == "prune":
-        _run_prune(args.retention_days)
+        _run_prune(args.retention_days, args.persona)
     elif args.command == "vacuum":
-        _run_vacuum()
+        _run_vacuum(args.persona)
     elif args.command == "serve":
         from pulse.server.app import serve  # lazy: fastapi only needed for the dashboard
         log.info("dashboard on http://%s:%d", args.host, args.port)
