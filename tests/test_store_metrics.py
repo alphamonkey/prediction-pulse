@@ -38,7 +38,7 @@ def test_account_snapshot_and_follower_series(db):
     db.insert_account_snapshot(AccountStats(100, 50, 10, _NOW - timedelta(days=8)))
     db.insert_account_snapshot(AccountStats(110, 55, 12, _NOW - timedelta(days=3)))
     db.insert_account_snapshot(AccountStats(120, 60, 15, _NOW))
-    series = db.follower_series(days=30)
+    series = db.follower_series(days=30, now=_NOW)  # pin the window so the test can't rot
     assert [p["followers"] for p in series] == [100, 110, 120]  # ascending by ts
 
 
@@ -77,7 +77,7 @@ def _seed_kpm(db):
 
 def test_kpms_core_rates(db):
     _seed_kpm(db)
-    k = db.kpms()
+    k = db.kpms(now=_NOW)  # pin the 7-day window so the test can't rot as wall-clock time passes
     assert k["followers"] == 120
     assert k["follower_delta_7d"] == 20      # 120 - earliest-within-7d (100)
     assert k["posts_measured"] == 2

@@ -546,21 +546,25 @@ class Database:
         ).fetchall()
         return [r["uri"] for r in rows]
 
-    def follower_series(self, days: int = 30) -> list[dict]:
-        """Account follower count over the last `days`, ascending by ts — for the growth chart."""
+    def follower_series(self, days: int = 30, *, now: datetime | None = None) -> list[dict]:
+        """Account follower count over the last `days`, ascending by ts — for the growth chart.
+
+        `now` is injectable so tests can pin the window deterministically (defaults to wall clock).
+        """
         assert self.conn is not None
-        cutoff = (_now() - timedelta(days=days)).isoformat()
+        cutoff = ((now or _now()) - timedelta(days=days)).isoformat()
         rows = self.conn.execute(
             "SELECT ts, followers FROM account_snapshots WHERE ts >= ? ORDER BY ts ASC",
             (cutoff,),
         ).fetchall()
         return [{"ts": r["ts"], "followers": r["followers"]} for r in rows]
 
-    def kpms(self) -> dict:
+    def kpms(self, *, now: datetime | None = None) -> dict:
         """The content scorecard: follower growth + per-post engagement rates over the tall metrics.
 
         Returns only metrics actually present, so a richer platform (e.g. one with impressions)
         surfaces a true engagement rate while Bluesky shows per-post proxies. Empty-DB safe.
+        `now` is injectable so tests can pin the 7-day window deterministically (defaults to wall clock).
         """
         assert self.conn is not None
         q = self.conn.execute
@@ -569,7 +573,7 @@ class Database:
         followers = latest["followers"] if latest else None
         delta = None
         if followers is not None:
-            cutoff = (_now() - timedelta(days=7)).isoformat()
+            cutoff = ((now or _now()) - timedelta(days=7)).isoformat()
             base = q("SELECT followers FROM account_snapshots WHERE ts >= ? ORDER BY ts ASC LIMIT 1",
                      (cutoff,)).fetchone()
             if base is not None:

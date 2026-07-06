@@ -1,16 +1,20 @@
 """Tests for the KPM dashboard endpoints (/api/kpms, /api/followers, /api/top-posts)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from pulse import config
 from pulse.metrics.base import AccountStats, MetricKind, PostEngagement
+from pulse.models import _now
 from pulse.publish.base import PostResult
 from pulse.store.db import Database
 
-_NOW = datetime(2026, 6, 27, 12, 0, 0, tzinfo=timezone.utc)
+# Seed relative to real "now": the /api/kpms endpoint computes its 7-day window from the wall clock
+# and there's no seam to inject a fixed clock through HTTP, so anchoring the seed to now keeps this
+# test from rotting as calendar time passes.
+_NOW = _now()
 
 
 @pytest.fixture
