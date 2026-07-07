@@ -1,5 +1,5 @@
 [Unit]
-Description=prediction-pulse dashboard (read-only)
+Description=persona-pulse fleet dashboard (read-only)
 After=network-online.target
 Wants=network-online.target
 

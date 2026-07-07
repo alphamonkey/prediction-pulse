@@ -121,7 +121,7 @@ journalctl -u pulse@gnome -f                   # that persona's logs
 
 Adding a persona = `personas/<name>/` + `secrets/<name>.env` (copy `deploy/persona.env.example`)
 + `systemctl enable --now pulse@<name>`. The dashboard runs as its own unit
-(`prediction-pulse-dashboard.service`, `:8440`).
+(`persona-pulse-dashboard.service`, `:8440`).
 
 **Unit-file gotcha:** changing `deploy/*.service` requires re-copying to `/etc/systemd/system/` +
 `daemon-reload` + restart — `git pull` alone doesn't apply unit changes (code changes do apply on

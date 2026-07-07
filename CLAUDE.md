@@ -63,7 +63,7 @@ Every stage is a swappable seam (a `Protocol`); the supervisor wires a persona's
 
 ## Running state
 Live: **`pulse@gnome`** (supervisor: `poll:trend` 15m, draft 1h, publish 4h+jitter in ET windows,
-engage 1h in-window signals-only, metrics 1h, prune daily) + `prediction-pulse-dashboard` (`:8440`).
+engage 1h in-window signals-only, metrics 1h, prune daily) + `persona-pulse-dashboard` (`:8440`).
 Per-stage units are retired (disabled; files removed from `deploy/`). Adding a persona:
 `personas/<name>/` + `secrets/<name>.env` + `sudo systemctl enable --now pulse@<name>`.
 

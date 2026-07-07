@@ -71,4 +71,4 @@ sudo rm /etc/systemd/system/prediction-pulse-{trendpoller,drafter,publisher,enga
 sudo systemctl daemon-reload
 ```
 
-The dashboard unit (`prediction-pulse-dashboard.service`) stays as-is.
+The dashboard unit was later renamed to `persona-pulse-dashboard.service` (its own follow-up).
