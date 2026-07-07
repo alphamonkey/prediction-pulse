@@ -69,7 +69,7 @@ def create_app(trend_client: BlueskyTrendClient | None = None) -> FastAPI:
     trends_cache: dict = {"at": 0.0, "data": []}
     trends_lock = threading.Lock()
 
-    app = FastAPI(title="prediction-pulse", docs_url="/api/docs")
+    app = FastAPI(title="persona-pulse", docs_url="/api/docs")
 
     @app.get("/api/personas")
     def personas() -> JSONResponse:

@@ -1,5 +1,5 @@
 [project]
-name = "prediction-pulse"
+name = "persona-pulse"
 version = "0.1.0"
 description = "Faceless, data-driven prediction-market content engine (Bluesky-first)"
 requires-python = ">=3.13"
