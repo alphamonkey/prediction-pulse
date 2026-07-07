@@ -2,7 +2,10 @@
 
 build_supervised is pure assembly (spec → jobs + schedulers) and is tested against the real
 factories in dryrun mode — constructing jobs never touches the network; only .run() would.
-supervise() drives the schedulers on threads sharing one stop Event.
+supervise() drives the schedulers on threads sharing one stop Event. Every job gets its OWN
+Database connection (WAL + busy_timeout serialize across connections, as in the old
+process-per-stage layout) — sharing one connection across job threads let an in-flight cursor
+on one thread break prune's wal_checkpoint on another (seen live at the gnome cutover).
 """
 
 from __future__ import annotations
@@ -32,10 +35,19 @@ def _persona(pipeline: dict, channels: list | None = None) -> Persona:
 
 @pytest.fixture
 def db(tmp_path):
-    database = Database(str(tmp_path / "testp.db"))
-    database.connect()
-    yield database
-    database.close()
+    """A make-db factory: one fresh connection to the persona's file per call."""
+    path = str(tmp_path / "testp.db")
+    made = []
+
+    def make_db() -> Database:
+        database = Database(path)
+        database.connect()
+        made.append(database)
+        return database
+
+    yield make_db
+    for database in made:
+        database.close()
 
 
 @pytest.fixture(autouse=True)
@@ -105,20 +117,29 @@ def test_engage_policy_built_from_spec(db):
     assert policy.queries  # defaults flow through
 
 
-def test_supervise_runs_every_job_once_and_returns(db):
+def test_each_job_gets_its_own_connection(db):
+    # One shared connection across job threads is how prune's wal_checkpoint broke live:
+    # another thread's in-flight cursor makes the checkpoint raise "database table is locked".
+    entries = build_supervised(_persona(FULL), db, kalshi_client=object())
+    ids = [id(e.db) for e in entries]
+    assert len(set(ids)) == len(entries)
+    assert all(e.db.conn is not None for e in entries)
+
+
+def test_supervise_runs_every_job_once_and_returns(tmp_path):
     # windows = [] means always-on, so max_iterations=1 lets the windowed jobs cycle too.
     persona = _persona({
         "draft": {"interval": 1},
         "publish": {"interval": 1, "windows": []},
         "metrics": {"interval": 1},
     })
-    supervise(persona, db, max_iterations=1)  # returns only when all schedulers finished
+    supervise(persona, tmp_path / "testp.db", max_iterations=1)  # returns when all finish
 
 
-def test_supervise_honors_stop_event(db):
+def test_supervise_honors_stop_event(tmp_path):
     persona = _persona({"metrics": {"interval": 3600}})
     stop = threading.Event()
-    t = threading.Thread(target=supervise, args=(persona, db),
+    t = threading.Thread(target=supervise, args=(persona, tmp_path / "testp.db"),
                          kwargs={"stop": stop}, daemon=True)
     t.start()
     stop.set()

@@ -204,11 +204,11 @@ def _run_supervise(persona_name: str, max_iterations: int) -> None:
         load_dotenv(secrets, override=True)
         log.info("loaded secrets from %s", secrets)
     persona = load_persona(persona_name)
-    db = _open_db(persona_name)
-    try:
-        supervise(persona, db, max_iterations=max_iterations, stop=_install_stop())
-    finally:
-        db.close()
+    # The supervisor opens one connection per job itself (WAL serializes across them) —
+    # main just ensures the data dir exists and hands over the path.
+    path = config.db_path_for(persona_name)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    supervise(persona, path, max_iterations=max_iterations, stop=_install_stop())
 
 
 def _run_draft(limit: int, persona_name: str, interval: int, max_iterations: int,
