@@ -46,13 +46,18 @@ class WriterUsage:
 
 
 def _render_event(event: Event) -> str:
-    """Lay out the verified facts the writer may use — nothing else."""
+    """Lay out the facts the writer may use — only the fields the event actually has.
+
+    Market events carry verified numbers and their market id; generated events are just a
+    seed (headline) for the persona voice, with no market residue to anchor on.
+    """
     lines = [f"Headline: {event.headline}", f"Signal: {event.rule}"]
     if event.from_value is not None and event.to_value is not None:
         lines.append(f"Moved from {event.from_value:.0%} to {event.to_value:.0%}")
     if event.direction:
         lines.append(f"Direction: {event.direction}")
-    lines.append(f"Market: {event.market_id} ({event.venue})")
+    if event.context.get("source_kind") != "generated":
+        lines.append(f"Market: {event.market_id} ({event.venue})")
     return "\n".join(lines)
 
 

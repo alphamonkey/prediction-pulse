@@ -487,19 +487,22 @@ class Database:
 
     @staticmethod
     def _row_to_event(row: sqlite3.Row) -> Event:
+        context = json.loads(row["context"]) if row["context"] else {}
+        # value_kind isn't a column; context is the persisted non-market discriminator.
+        market_shaped = context.get("source_kind") != "generated"
         return Event(
             rule=row["rule"],
             venue=row["venue"],
             market_id=row["market_id"],
             ts=datetime.fromisoformat(row["ts"]),
-            value_kind=ValueKind.PROBABILITY,  # posted_events is probability-class for now
+            value_kind=ValueKind.PROBABILITY if market_shaped else None,
             from_value=row["from_value"],
             to_value=row["to_value"],
             magnitude=row["magnitude"],
             direction=row["direction"],
             headline=row["headline"],
             dedup_key=row["dedup_key"],
-            context=json.loads(row["context"]) if row["context"] else {},
+            context=context,
         )
 
     # ── engagement metrics (collector writes; dashboard reads) ──
