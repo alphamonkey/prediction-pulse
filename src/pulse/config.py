@@ -170,4 +170,5 @@ RULE_WEIGHTS = {
     "odds_swing": 2.0,
     "volume_spike": 1.5,
     "new_market": 1.0,
+    "generated": 1.0,      # generator seeds — no market signal to weigh against
 }

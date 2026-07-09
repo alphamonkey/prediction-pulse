@@ -169,6 +169,21 @@ def test_get_undrafted_events_excludes_drafted_and_reconstructs(db):
     assert ev.market_id == "KXTEST"
 
 
+def test_generated_event_round_trips_non_market_shape(db):
+    db.record_posted(Event(
+        rule="generated", venue="generator", market_id="bean-history", ts=_T,
+        value_kind=None, from_value=None, to_value=None, magnitude=1.0, direction=None,
+        headline="bean history", dedup_key="generated:bean-history:2026-06-24T12:00",
+        context={"source_kind": "generated"},
+    ))
+    [ev] = db.get_undrafted_events(limit=10)
+    # context is the persisted discriminator; value_kind must NOT come back market-shaped
+    assert ev.context["source_kind"] == "generated"
+    assert ev.value_kind is None
+    assert ev.headline == "bean history"
+    assert ev.magnitude == 1.0
+
+
 def test_get_undrafted_events_respects_limit(db):
     for i in range(5):
         db.record_posted(_event(dedup_key=f"k{i}"))

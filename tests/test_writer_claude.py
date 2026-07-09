@@ -75,6 +75,26 @@ def test_persona_voice_is_cached_system_event_in_user_message():
     assert "KXPRES jumped" not in kw["system"][0]["text"]
 
 
+def _generated_event():
+    return Event(
+        rule="generated", venue="generator", market_id="bean-history", ts=_T,
+        value_kind=None, from_value=None, to_value=None, magnitude=1.0, direction=None,
+        headline="bean history", dedup_key="generated:bean-history:2026-06-24T12:00",
+        context={"source_kind": "generated"},
+    )
+
+
+def test_generated_event_renders_without_market_shape():
+    client = FakeClient()
+    ClaudeWriter(client=client).write(_generated_event(), _PERSONA)
+    user = client.messages.calls[0]["messages"][0]["content"]
+    assert "bean history" in user
+    # No market residue for non-market events: no Market line, no venue, no % move.
+    assert "Market:" not in user
+    assert "generator" not in user
+    assert "Moved" not in user
+
+
 def test_length_enforced():
     draft = ClaudeWriter(client=FakeClient(text="z" * 400)).write(_event(), _PERSONA)
     assert len(draft.text) <= 300

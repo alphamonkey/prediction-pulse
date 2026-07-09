@@ -35,8 +35,7 @@ from pulse.scheduler.base import Job, Scheduler
 from pulse.scheduler.interval import IntervalScheduler
 from pulse.scheduler.windowed import WindowedScheduler
 from pulse.store.db import Database
-from pulse.venue.kalshi import KalshiClient
-from pulse.venue.registry import make_source
+from pulse.venue.registry import SourceContext, make_source
 from pulse.writer.factory import make_writer
 
 log = logging.getLogger("pulse")
@@ -52,25 +51,30 @@ class SupervisedJob:
 
 def build_supervised(
     persona: Persona, make_db: Callable[[], Database], *,
-    kalshi_client: KalshiClient | None = None, max_iterations: int = 0,
+    source_context: SourceContext | None = None, max_iterations: int = 0,
 ) -> list[SupervisedJob]:
     """Assemble the persona's declared jobs, each paired with its scheduler and its own
     Database connection (from `make_db`).
 
-    Publish/engage get WindowedSchedulers (dayparted outward actions); everything else runs
-    24/7 on IntervalSchedulers. Prune is always included — every persona owns its DB's retention.
+    Source dependencies come lazily from `source_context` (defaulted if omitted) — only the
+    declared sources' builders materialize anything, so a persona with no market sources
+    never constructs a Kalshi client. Publish/engage get WindowedSchedulers (dayparted
+    outward actions); everything else runs 24/7 on IntervalSchedulers. Prune is always
+    included — every persona owns its DB's retention.
     """
     spec = persona.pipeline
     entries: list[SupervisedJob] = []
 
     if spec.poll:
-        if kalshi_client is None:
-            raise ValueError(f"persona {persona.name} declares [pipeline.poll] "
-                             "but no kalshi_client was provided")
-        for source_name in spec.poll.sources:
+        ctx = source_context if source_context is not None else SourceContext()
+        types = [s.type for s in spec.poll.sources]
+        for i, source_spec in enumerate(spec.poll.sources):
             db = make_db()
-            job = PollJob(make_source(source_name, kalshi_client), db)
-            entries.append(SupervisedJob(f"poll:{source_name}", job, IntervalScheduler(
+            job = PollJob(make_source(source_spec, ctx), db)
+            name = f"poll:{source_spec.type}"
+            if types.count(source_spec.type) > 1:  # same type twice -> disambiguate
+                name = f"{name}:{types[:i].count(source_spec.type) + 1}"
+            entries.append(SupervisedJob(name, job, IntervalScheduler(
                 job, spec.poll.interval,
                 max_iterations=max_iterations, jitter_seconds=spec.poll.jitter), db))
 
@@ -120,7 +124,7 @@ def supervise(
 ) -> None:
     """Run all of the persona's jobs until stop is set (or every scheduler hits max_iterations)."""
     stop = stop or threading.Event()
-    kalshi_client = KalshiClient() if persona.pipeline.poll else None
+    ctx = SourceContext()  # lazy: only market-source builders materialize the Kalshi client
     entries: list[SupervisedJob] = []
 
     def make_db() -> Database:
@@ -129,7 +133,7 @@ def supervise(
         return db
 
     try:
-        entries = build_supervised(persona, make_db, kalshi_client=kalshi_client,
+        entries = build_supervised(persona, make_db, source_context=ctx,
                                    max_iterations=max_iterations)
         log.info("supervisor: persona=%s mode=%s jobs=[%s]",
                  persona.name, config.pulse_mode(), ", ".join(e.name for e in entries))
@@ -148,5 +152,4 @@ def supervise(
     finally:
         for entry in entries:
             entry.db.close()
-        if kalshi_client is not None:
-            kalshi_client.close()
+        ctx.close()

@@ -49,6 +49,18 @@ def test_higher_volume_breaks_ties():
     assert out[0].market_id == "LOUD"
 
 
+def test_generated_rule_has_a_configured_weight():
+    generated = Event(
+        rule="generated", venue="generator", market_id="beans", ts=_T,
+        value_kind=None, from_value=None, to_value=None, magnitude=1.0, direction=None,
+        headline="beans", dedup_key="generated:beans:2026-06-24T12:00",
+        context={"source_kind": "generated"},
+    )
+    unweighted = _event("mystery", "X")
+    out = select_events([unweighted, generated], limit=1)
+    assert out[0].rule == "generated"  # generated events must survive ranking
+
+
 def test_unknown_rule_does_not_crash():
     # a rule with no configured weight still ranks (lowest), never errors
     out = select_events([_event("mystery", "X")], limit=5)

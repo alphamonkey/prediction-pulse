@@ -1,7 +1,9 @@
 """TemplateWriter — a deterministic, zero-token writer.
 
 Builds a post directly from the Event's already-human-readable `headline`. It's the dryrun/test
-fallback (no API key needed) and the baseline the ClaudeWriter improves on.
+fallback (no API key needed) and the baseline the ClaudeWriter improves on. For generated
+(seed) events the headline is the raw topic seed, so dryrun output reads as the seed itself —
+acceptable, since generator personas need a live writer to invent anything.
 """
 
 from __future__ import annotations

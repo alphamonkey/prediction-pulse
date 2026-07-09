@@ -27,6 +27,7 @@ from pulse.engager import EngageJob, EngagePolicy
 from pulse.metrics.collect import MetricsJob
 from pulse.metrics.factory import make_engagement_source
 from pulse.persona import load_persona
+from pulse.pipeline import SourceSpec
 from pulse.poller import PollJob
 from pulse.pruner import PruneJob
 from pulse.publisher import PublishJob
@@ -35,7 +36,7 @@ from pulse.scheduler.windowed import WindowedScheduler
 from pulse.store.db import Database
 from pulse.supervisor import supervise
 from pulse.venue.kalshi import KalshiClient
-from pulse.venue.registry import make_source
+from pulse.venue.registry import SourceContext, make_source
 from pulse.writer.factory import make_writer
 
 log = logging.getLogger("pulse")
@@ -54,11 +55,12 @@ def _open_db(persona_name: str) -> Database:
 def _poll_job(source_name: str, persona_name: str):
     db = _open_db(persona_name)
     try:
-        client = KalshiClient()
+        # Lazy: only market-source builders materialize the Kalshi client.
+        ctx = SourceContext(kalshi_factory=lambda: KalshiClient())
         try:
-            yield PollJob(make_source(source_name, client), db)
+            yield PollJob(make_source(SourceSpec(source_name), ctx), db)
         finally:
-            client.close()
+            ctx.close()
     finally:
         db.close()
 

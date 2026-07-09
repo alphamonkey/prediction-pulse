@@ -10,7 +10,7 @@ import pytest
 
 from pulse import config
 from pulse.persona import load_persona
-from pulse.pipeline import PipelineSpec, parse_pipeline
+from pulse.pipeline import PipelineSpec, SourceSpec, parse_pipeline
 
 
 def test_no_pipeline_table_means_no_jobs():
@@ -25,15 +25,37 @@ def test_no_pipeline_table_means_no_jobs():
 
 def test_poll_parses_sources_and_interval():
     spec = parse_pipeline({"poll": {"sources": ["trend"], "interval": 900}})
-    assert spec.poll.sources == ("trend",)
+    assert spec.poll.sources == (SourceSpec("trend"),)
     assert spec.poll.interval == 900
     assert spec.poll.jitter == 0
 
 
 def test_poll_defaults():
     spec = parse_pipeline({"poll": {}})
-    assert spec.poll.sources == ("kalshi",)
+    assert spec.poll.sources == (SourceSpec("kalshi"),)
     assert spec.poll.interval == config.DEFAULT_INTERVAL_SECONDS
+
+
+def test_poll_source_tables_parse_type_and_options():
+    # [[pipeline.poll.source]] — a configured source; non-`type` keys pass through as options.
+    spec = parse_pipeline({"poll": {"source": [
+        {"type": "generator", "topics": ["bean history"], "count": 2},
+        {"type": "trend"},
+    ]}})
+    assert spec.poll.sources == (
+        SourceSpec("generator", {"topics": ["bean history"], "count": 2}),
+        SourceSpec("trend"),
+    )
+
+
+def test_poll_source_table_requires_type():
+    with pytest.raises(ValueError, match=r"poll.*source.*type"):
+        parse_pipeline({"poll": {"source": [{"topics": ["beans"]}]}})
+
+
+def test_poll_both_source_forms_rejected():
+    with pytest.raises(ValueError, match=r"sources.*source|source.*sources"):
+        parse_pipeline({"poll": {"sources": ["trend"], "source": [{"type": "generator"}]}})
 
 
 def test_draft_defaults():
@@ -153,7 +175,7 @@ interval = 600
 [pipeline.metrics]
 """)
     persona = load_persona("frog", root=tmp_path)
-    assert persona.pipeline.poll.sources == ("trend",)
+    assert persona.pipeline.poll.sources == (SourceSpec("trend"),)
     assert persona.pipeline.poll.interval == 600
     assert persona.pipeline.metrics is not None
     assert persona.pipeline.draft is None

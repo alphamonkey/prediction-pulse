@@ -16,8 +16,20 @@ Windows = tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
+class SourceSpec:
+    """One declared content source: its registry type + source-owned options.
+
+    The pipeline parser passes `options` through verbatim — each source builder owns the
+    validation of its own keys (the strictness lives with the seam that defines the keys).
+    """
+
+    type: str
+    options: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class PollSpec:
-    sources: tuple[str, ...] = ("kalshi",)
+    sources: tuple[SourceSpec, ...] = (SourceSpec("kalshi"),)
     interval: int = config.DEFAULT_INTERVAL_SECONDS
     jitter: int = 0
 
@@ -94,6 +106,23 @@ def _parse_windows(section: str, raw) -> Windows:
     return tuple(pairs)
 
 
+def _parse_sources(data: dict) -> tuple[SourceSpec, ...]:
+    """`sources = ["trend"]` is sugar for `[[pipeline.poll.source]]` tables with only a type."""
+    if "sources" in data and "source" in data:
+        raise ValueError("[pipeline.poll] declares both `sources` and `source` — use one form")
+    if "sources" in data:
+        return tuple(SourceSpec(str(name)) for name in data["sources"])
+    if "source" in data:
+        specs = []
+        for entry in data["source"]:
+            if "type" not in entry:
+                raise ValueError("[[pipeline.poll.source]] entries must declare a `type`")
+            options = {k: v for k, v in entry.items() if k != "type"}
+            specs.append(SourceSpec(str(entry["type"]), options))
+        return tuple(specs)
+    return PollSpec.sources
+
+
 def parse_pipeline(table: dict) -> PipelineSpec:
     """Parse the (possibly absent) `[pipeline]` table of a persona.toml."""
     unknown = set(table) - set(_SECTIONS)
@@ -104,9 +133,9 @@ def parse_pipeline(table: dict) -> PipelineSpec:
 
     if "poll" in table:
         data = table["poll"]
-        _check_keys("poll", data, ("sources", "interval", "jitter"))
+        _check_keys("poll", data, ("sources", "source", "interval", "jitter"))
         poll = PollSpec(
-            sources=tuple(data["sources"]) if "sources" in data else PollSpec.sources,
+            sources=_parse_sources(data),
             interval=data.get("interval", PollSpec.interval),
             jitter=data.get("jitter", PollSpec.jitter),
         )

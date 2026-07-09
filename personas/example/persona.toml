@@ -14,10 +14,21 @@ channels = []
 # metrics-only lurker keeps just [pipeline.metrics].
 
 [pipeline.poll]
-sources = ["kalshi"]              # market selection: "kalshi" (category allowlist) | "trend"
-                                  # (Bluesky-trend-selected); list several to run both
+sources = ["kalshi"]              # content sources: "kalshi" (category allowlist) | "trend"
+                                  # (Bluesky-trend-selected) | "generator" (no external input);
+                                  # list several to run them all
 interval = 900                    # seconds between poll cycles
 # jitter = 0                      # max extra random seconds per cycle
+
+# A source that takes options is declared as a table instead (drop `sources =` above — the two
+# forms don't mix). "generator" emits your topic seeds as events; the writer invents the post
+# in the persona's voice, so no market/API credentials are needed at all:
+# [[pipeline.poll.source]]
+# type = "generator"
+# topics = ["bean history", "bean science"]  # seeds, rotated across buckets; default: 1 generic
+# count = 1                        # events per cycle (capped at one per topic per bucket)
+# bucket = "1d"                    # dedup granularity ("30m"/"4h"/"1d"): one seed per topic per
+#                                  # bucket, so this sets the max posting cadence
 
 [pipeline.draft]
 interval = 3600

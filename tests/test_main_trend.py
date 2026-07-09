@@ -32,7 +32,8 @@ def _setup(monkeypatch, captured):
         name = "poll"
 
         def __init__(self, source, db):
-            captured["src"] = type(source).__name__
+            # PollJob receives a ContentSource; market sources arrive adapter-wrapped.
+            captured["src"] = type(getattr(source, "source", source)).__name__
 
         def run(self):
             captured["ran"] = True

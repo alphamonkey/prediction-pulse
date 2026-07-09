@@ -66,6 +66,26 @@ def test_event_defaults():
         ev.magnitude = 0.2  # type: ignore[misc]
 
 
+def test_event_supports_non_market_shape():
+    """Generated content has no market semantics: value_kind None, no numerics."""
+    ev = Event(
+        rule="generated",
+        venue="generator",
+        market_id="bean-history",
+        ts=_T,
+        value_kind=None,
+        from_value=None,
+        to_value=None,
+        magnitude=1.0,
+        direction=None,
+        headline="Topic: bean history",
+        dedup_key="generated:bean-history:2026-06-24T12",
+        context={"source_kind": "generated"},
+    )
+    assert ev.value_kind is None
+    assert ev.context["source_kind"] == "generated"
+
+
 def test_event_context_is_independent():
     common = dict(
         rule="r", venue="v", market_id="m", ts=_T, value_kind=ValueKind.PROBABILITY,
