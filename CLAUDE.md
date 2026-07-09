@@ -29,12 +29,20 @@ Every stage is a swappable seam (a `Protocol`); the supervisor wires a persona's
   thread sharing one SIGTERM-wired stop Event. **Each job gets its OWN DB connection** — sharing
   one across threads broke `wal_checkpoint` live (Database's lock covers writes only; WAL +
   busy_timeout serialize across connections).
-- **`venue/`** — `SnapshotSource` seam + **registry** (`registry.py`: name → builder; a new
-  content source is one entry). `kalshi.py` (category allowlist + volume floor), `trending.py`
-  (`BlueskyTrendSource`: markets matched to Bluesky trends via token co-occurrence — the live
-  gnome source; far fewer snapshots than the broad poll).
+- **`venue/`** — `ContentSource` seam ("produce this cycle's newly recorded `Event`s"; sources
+  record via `db.record_posted`, whose INSERT OR IGNORE backstops races) + **registry**
+  (`registry.py`: `SourceSpec` → builder; builders validate their own option keys and pull deps
+  from a lazy `SourceContext` — no market sources ⇒ no Kalshi client). Market polling is one
+  implementation: `SnapshotContentSource` wraps a `SnapshotSource` (fetch → store → detect).
+  Sources: `kalshi.py` (category allowlist + volume floor), `trending.py` (`BlueskyTrendSource`:
+  markets matched to Bluesky trends — the live gnome source), `generator.py` (**no external
+  input**: emits operator-authored topic seeds; the writer invents the post; bucket-stable dedup;
+  options `topics`/`count`/`bucket` via `[[pipeline.poll.source]]` tables — `sources = [...]`
+  stays as sugar).
 - **`detector/`** — pure rules via a registry: `odds_swing`, `volume_spike`, `milestone`,
-  `new_market` → `Event`s. No LLM, fully TDD.
+  `new_market` → `Event`s. No LLM, fully TDD. `Event` is the universal content unit: non-market
+  events carry `value_kind=None` + `context.source_kind` (the persisted discriminator — only
+  rule/headline/dedup_key are load-bearing downstream).
 - **`writer/`** — `Writer` seam + `make_writer()` factory (`writer/factory.py`): `ClaudeWriter`
   (Haiku, cost tracking, cache_control) when `ANTHROPIC_API_KEY` set, else `TemplateWriter`.
   `select.py` ranks events by `RULE_WEIGHTS`.
@@ -73,8 +81,10 @@ work in-session** — hand the operator the command block for a separate termina
 read-only commands. See memory `deploy-ops`.
 
 ## Conventions
-- **Never commit `.env`, `secrets/`, or `*.db`.** Real data only — never fabricate numbers. Light
-  "not financial advice" framing. No agriculture/food topics.
+- **Never commit `.env`, `secrets/`, or `*.db`.** For **market personas**: real data only —
+  never fabricate numbers; light "not financial advice" framing; no agriculture/food topics
+  (enforced in the Kalshi category allowlist). Generator personas may be fabrication-by-design
+  (e.g. the planned Bean Facts), but their fiction must be obvious — never fake *market* data.
 - **Dry-run first**: new personas keep `PULSE_MODE=dryrun` in their secrets file until copy review.
 - **TDD** (tests-first; mock Bluesky/Claude at boundaries). Clean seams. Avoid races (per-job
   connections; WAL + busy_timeout across them).
@@ -86,8 +96,11 @@ read-only commands. See memory `deploy-ops`.
 ## Open items / next work
 - Issue #6: API cost on the dashboard. Issue #7: market link per platform. Issue #13: persona
   hot-reload (supervisor is its natural home — persona/policy still load once at startup).
-- **New content-source types** (non-market personas) — a `venue/registry.py` entry producing
-  normalized snapshots, or a new poll+detect pair emitting `Event`s. A persona scaffolding command.
+- **Bean Facts persona** (next session): pure config on the generator source — `personas/
+  beanfacts/` + secrets + Bluesky account; engage on bean queries; dryrun copy review first;
+  profile push is manual (memory `persona-profile-not-pushed`). The content-source seam is DONE
+  (spec: `docs/superpowers/specs/2026-07-09-generator-content-source-design.md`); remaining:
+  externally-fed non-market sources (news/weather/RSS) and a persona scaffolding command.
 - **Engagement, deeper:** reply/quote (LLM) actions, reciprocal + curated-list `TargetSource`s,
   tuning dayparting windows from real activity data.
 - **Metrics, deeper:** per-post engagement *over time* + rule→engagement attribution (tune
