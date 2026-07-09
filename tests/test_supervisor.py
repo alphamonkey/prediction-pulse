@@ -15,7 +15,7 @@ import threading
 import pytest
 
 from pulse.engage.base import SignalKind
-from pulse.persona import Persona
+from pulse.persona import Persona, load_persona
 from pulse.pipeline import parse_pipeline
 from pulse.scheduler.interval import IntervalScheduler
 from pulse.scheduler.windowed import WindowedScheduler
@@ -153,6 +153,56 @@ def test_each_job_gets_its_own_connection(db):
     ids = [id(e.db) for e in entries]
     assert len(set(ids)) == len(entries)
     assert all(e.db.conn is not None for e in entries)
+
+
+def test_generator_persona_end_to_end_dryrun(tmp_path, db):
+    """The Bean Facts acceptance path: a pure-config persona with no external input
+    produces a dryrun post from a generated seed — no Kalshi, no Bluesky, no Anthropic."""
+    pdir = tmp_path / "personas" / "beans"
+    pdir.mkdir(parents=True)
+    (pdir / "system_prompt.md").write_text("You invent silly bean facts.")
+    (pdir / "persona.toml").write_text("""
+display_name = "Bean E2E"
+
+[[channels]]
+platform = "bluesky"
+handle = "beans.test"
+
+[pipeline.poll]
+interval = 60
+
+[[pipeline.poll.source]]
+type = "generator"
+topics = ["bean history"]
+bucket = "4h"
+
+[pipeline.draft]
+
+[pipeline.publish]
+windows = []
+""")
+    persona = load_persona("beans", root=tmp_path / "personas")
+
+    def no_kalshi():
+        raise AssertionError("generator persona must not construct a Kalshi client")
+
+    entries = build_supervised(persona, db,
+                               source_context=SourceContext(kalshi_factory=no_kalshi))
+    jobs = {e.name: e.job for e in entries}
+    assert {"poll:generator", "draft", "publish", "prune"} <= set(jobs)
+
+    jobs["poll:generator"].run()
+    jobs["draft"].run()
+    publish_report = jobs["publish"].run()
+
+    store = db()
+    events = store.conn.execute("SELECT rule, headline FROM posted_events").fetchall()
+    assert [(r["rule"], r["headline"]) for r in events] == [("generated", "bean history")]
+    drafts = store.conn.execute("SELECT text FROM drafts").fetchall()
+    assert [r["text"] for r in drafts] == ["bean history"]  # TemplateWriter echoes the seed
+    # Dryrun publish reports without writing a posts row — that's the live gate working.
+    assert publish_report.candidates == 1
+    assert publish_report.would_post == 1
 
 
 def test_supervise_runs_every_job_once_and_returns(tmp_path):
