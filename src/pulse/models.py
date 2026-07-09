@@ -50,13 +50,18 @@ class Snapshot:
 
 @dataclass(frozen=True)
 class Event:
-    """A detected, newsworthy occurrence — the detector's output unit."""
+    """Something worth posting about — the unit every downstream stage consumes.
+
+    Market detection is one producer; generated/non-market content is another. Non-market
+    events carry `value_kind=None` and no numerics — only rule/headline/dedup_key are load-
+    bearing downstream.
+    """
 
     rule: str
     venue: str
-    market_id: str
-    ts: datetime  # the triggering snapshot's ts
-    value_kind: ValueKind
+    market_id: str  # generic subject id; for markets it's the venue's market ticker
+    ts: datetime  # the triggering snapshot's ts (or emission time for generated events)
+    value_kind: ValueKind | None  # None for non-market events
     from_value: float | None
     to_value: float | None
     magnitude: float
