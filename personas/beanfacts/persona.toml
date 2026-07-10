@@ -24,10 +24,12 @@ topics = [
   "beans in space",
   "bean etiquette",
   "bean economics",
+  "sexy beans",
+  "beans on film"
 ]
 
 [pipeline.draft]
-interval = 3600
+interval = 3630
 
 [pipeline.publish]
 interval = 14400
@@ -40,7 +42,7 @@ interval = 3600
 jitter = 600
 windows = "publish"
 queries = ["beans", "legumes"]    # engage with anything bean-related; allow defaults to queries
-actions = ["like", "repost"]
+actions = ["like"]
 
 [pipeline.metrics]
 interval = 3600
