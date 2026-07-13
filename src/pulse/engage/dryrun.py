@@ -9,16 +9,18 @@ from __future__ import annotations
 
 import logging
 
+from pulse import channels
 from pulse.engage.base import EngageResult, SignalKind, Target
 
 log = logging.getLogger("pulse")
 
 
 class DryRunEngager:
-    supported_actions = frozenset({SignalKind.LIKE, SignalKind.REPOST, SignalKind.FOLLOW})
-
     def __init__(self, channel: str) -> None:
         self.name = channel
+        # From the registry, not hard-coded: a dry run must report what THIS channel can do, not
+        # what Bluesky can.
+        self.supported_actions: frozenset[SignalKind] = channels.channel_spec(channel).actions
 
     def engage(self, target: Target, action: SignalKind) -> EngageResult:
         log.info("would %s [%s]: %s", action.value, self.name, target.uri or target.author_handle)

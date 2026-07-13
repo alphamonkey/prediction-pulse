@@ -79,6 +79,14 @@ def test_dryrun_performs_nothing():
     assert result.action == SignalKind.LIKE
 
 
+def test_dryrun_declares_the_channels_capabilities_not_blueskys():
+    """It hard-coded Bluesky's three actions for every channel, so a dry run would over-report what
+    another platform can actually do. The registry is the single source of truth."""
+    from pulse import channels
+    for platform in channels.known_platforms():
+        assert DryRunEngager(platform).supported_actions == channels.channel_spec(platform).actions
+
+
 # ── make_engager (the live gate) ──
 def test_make_engager_dryrun_returns_dryrun(monkeypatch):
     monkeypatch.setenv("PULSE_MODE", "dryrun")
