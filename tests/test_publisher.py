@@ -72,6 +72,19 @@ def test_publish_once_respects_daily_cap(db, monkeypatch):
     assert db.posts_today("bluesky") == 2
 
 
+def test_publish_once_does_not_drain_the_daily_quota_in_one_cycle(db):
+    """The per-cycle limit is NOT the daily cap. Defaulting one to the other let a single cycle
+    post the whole day's quota back-to-back — live, that was 9 posts inside one second."""
+    _seed_drafts(db, config.MAX_POSTS_PER_DAY)
+    pub = FakePublisher()
+
+    report = publish_once(db, pub, _PERSONA, limit=config.POSTS_PER_CYCLE)
+
+    assert config.POSTS_PER_CYCLE < config.MAX_POSTS_PER_DAY
+    assert report.posted == config.POSTS_PER_CYCLE
+    assert db.posts_today("bluesky") < config.MAX_POSTS_PER_DAY  # room left for later cycles
+
+
 def test_publish_once_dryrun_records_nothing(db):
     _seed_drafts(db, 2)
 

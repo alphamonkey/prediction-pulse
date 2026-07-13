@@ -272,8 +272,8 @@ def cli(argv: list[str] | None = None) -> None:
     pub_p = sub.add_parser("publish", help="Post a persona's freshest drafts to its channels.")
     pub_p.add_argument("--persona", default=config.PERSONA,
                        help="Persona name under personas/ (default: %(default)s).")
-    pub_p.add_argument("--limit", type=int, default=config.MAX_POSTS_PER_DAY,
-                       help="Max posts this run (also capped by the daily limit; default: %(default)s).")
+    pub_p.add_argument("--limit", type=int, default=config.POSTS_PER_CYCLE,
+                       help="Max posts per cycle (also capped by the daily limit; default: %(default)s).")
     pub_p.add_argument("--interval", type=int, default=0,
                        help="Run on a cadence (seconds); 0 = one-shot (default: 0).")
     pub_p.add_argument("--max-iterations", type=int, default=0,

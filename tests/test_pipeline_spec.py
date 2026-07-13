@@ -77,7 +77,7 @@ def test_publish_parses_windows_and_defaults():
     assert spec.publish.jitter == 600
     assert spec.publish.windows == (("07:00", "10:00"), ("17:00", "22:00"))
     assert spec.publish.tz == "Europe/London"
-    assert spec.publish.limit == config.MAX_POSTS_PER_DAY
+    assert spec.publish.limit == config.POSTS_PER_CYCLE
 
 
 def test_publish_defaults():
@@ -85,6 +85,14 @@ def test_publish_defaults():
     assert spec.publish.interval == config.PUBLISH_INTERVAL_SECONDS
     assert spec.publish.windows == config.PUBLISH_WINDOWS
     assert spec.publish.tz == config.ACTIVE_TZ
+
+
+def test_publish_limit_is_per_cycle_not_the_daily_cap():
+    """`limit` caps ONE publish cycle; MAX_POSTS_PER_DAY caps the day. Defaulting the first to the
+    second meant the day's first cycle drained the whole quota in a burst."""
+    spec = parse_pipeline({"publish": {}})
+    assert spec.publish.limit == config.POSTS_PER_CYCLE
+    assert spec.publish.limit < config.MAX_POSTS_PER_DAY
 
 
 def test_engage_windows_publish_alias_uses_personas_publish_windows():

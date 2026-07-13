@@ -47,7 +47,7 @@ class PublishSpec:
     jitter: int = 0
     windows: Windows = config.PUBLISH_WINDOWS
     tz: str = config.ACTIVE_TZ
-    limit: int = config.MAX_POSTS_PER_DAY
+    limit: int = config.POSTS_PER_CYCLE  # per CYCLE; the daily cap is config.MAX_POSTS_PER_DAY
 
 
 @dataclass(frozen=True)
