@@ -38,6 +38,12 @@ class Persona:
         from pulse import config
         return config.bluesky_handle()
 
+    def draft_max_length(self) -> int:
+        """How long one draft may be: the tightest limit among the channels it will be fanned out
+        to. A persona with no channels keeps Bluesky's historical limit."""
+        from pulse import channels
+        return channels.draft_max_length(self.channels)
+
 
 def load_persona(name: str, *, root: str | Path = PERSONAS_DIR) -> Persona:
     """Load a persona by name from `<root>/<name>/`. Raises FileNotFoundError if absent."""

@@ -7,21 +7,17 @@ switched to live.
 
 from __future__ import annotations
 
-from pulse import config
+from pulse import channels, config
 from pulse.publish.base import Publisher
 from pulse.publish.bluesky import BlueskyPublisher
 from pulse.publish.dryrun import DryRunPublisher
 
-_KNOWN = {"bluesky"}
-
 
 def make_publisher(channel: dict) -> Publisher:
-    platform = channel.get("platform")
-    if platform not in _KNOWN:
-        raise ValueError(f"unknown publish platform: {platform!r}")
+    platform = channels.validate_channel(channel)["platform"]
 
     if config.pulse_mode() != "live":
-        return DryRunPublisher(platform)
+        return DryRunPublisher(platform, max_length=channels.max_length_for(channel))
 
     if platform == "bluesky":
         handle = channel.get("handle") or config.bluesky_handle()

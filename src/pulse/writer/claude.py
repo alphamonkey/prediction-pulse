@@ -15,7 +15,7 @@ import anthropic
 from pulse import config
 from pulse.models import Event
 from pulse.persona import Persona
-from pulse.writer.base import Draft, enforce_bluesky_length
+from pulse.writer.base import Draft, enforce_length
 
 
 @dataclass
@@ -96,6 +96,6 @@ class ClaudeWriter:
         return Draft(
             event_dedup_key=event.dedup_key,
             persona=persona.name,
-            text=enforce_bluesky_length(text),
+            text=enforce_length(text, persona.draft_max_length()),
             context=context or {},
         )
