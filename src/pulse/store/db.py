@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -120,6 +121,8 @@ PASSIVE_METRICS = frozenset({MetricKind.IMPRESSIONS, MetricKind.VIDEO_VIEWS})
 
 # How long a writer waits for the lock before erroring (poller + drafter share the DB).
 BUSY_TIMEOUT_MS = 60000  # 60s — two writers (poller + drafter) share the DB; ride out contention
+WAL_RETRIES = 12         # see _set_wal: busy_timeout does NOT cover the journal_mode switch
+WAL_RETRY_SLEEP = 0.05
 
 
 class Database:
@@ -140,12 +143,31 @@ class Database:
         # after a prune. MUST precede the first CREATE TABLE to take effect on a fresh DB; on an
         # already-created DB it's inert until a full VACUUM converts it (see `vacuum()`).
         self.conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
-        # Converting a not-yet-WAL file needs an exclusive lock (a no-op once it IS WAL).
-        self.conn.execute("PRAGMA journal_mode=WAL")
+        self._set_wal()
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(_SCHEMA)
         self._migrate()
         self.conn.commit()
+
+    def _set_wal(self) -> None:
+        """Switch the file to WAL, retrying by hand on contention.
+
+        `PRAGMA journal_mode` is the one statement busy_timeout can NOT cover: SQLite deliberately
+        does not invoke the busy handler for it, returning SQLITE_BUSY immediately instead. So
+        converting a not-yet-WAL file while another connection holds it open fails outright, no
+        matter how generous the timeout. Once the file IS WAL this is a no-op that needs no lock —
+        which is why it never bit the live DBs, and would only have bitten a brand-new persona
+        whose first connections raced.
+        """
+        assert self.conn is not None
+        for attempt in range(WAL_RETRIES):
+            try:
+                self.conn.execute("PRAGMA journal_mode=WAL")
+                return
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == WAL_RETRIES - 1:
+                    raise
+                time.sleep(WAL_RETRY_SLEEP)  # a racing connection is mid-conversion; it converges
 
     def _migrate(self) -> None:
         """Additive migrations for DBs created before a column existed.
