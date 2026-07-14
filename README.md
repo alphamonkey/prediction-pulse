@@ -27,9 +27,15 @@ falls back to `config.py` defaults:
 ```toml
 display_name = "The Avaricious Gnome 🧙‍♂️"
 
+# One block per account. Publish, engage and metrics all loop these — so adding a channel here
+# (plus its secret in secrets/<persona>.env) is the whole change. No code.
 [[channels]]
 platform = "bluesky"
 handle = "avariciousgnome.bsky.social"
+
+# [[channels]]
+# platform = "mastodon"                  # also Pleroma / Akkoma / GoToSocial
+# instance = "https://mastodon.social"   # required — the adapter is instance-agnostic
 
 [pipeline.poll]
 sources = ["trend"]      # source registry: "kalshi" (category allowlist) | "trend" (Bluesky-trending)
