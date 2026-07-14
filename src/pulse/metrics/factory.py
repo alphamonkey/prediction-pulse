@@ -11,6 +11,7 @@ from pulse import channels, config
 from pulse.metrics.base import EngagementSource
 from pulse.metrics.bluesky import BlueskyEngagementSource
 from pulse.metrics.dryrun import NullEngagementSource
+from pulse.metrics.mastodon import MastodonEngagementSource
 
 
 def make_engagement_source(channel: dict) -> EngagementSource:
@@ -25,5 +26,11 @@ def make_engagement_source(channel: dict) -> EngagementSource:
                 "BLUESKY_APP_PASSWORD not set — cannot collect engagement from Bluesky.")
         return BlueskyEngagementSource(channels.handle_for(channel),
                                        config.bluesky_app_password())
+
+    if platform == "mastodon":
+        if not config.mastodon_access_token():
+            raise RuntimeError(
+                "MASTODON_ACCESS_TOKEN not set — cannot collect engagement from Mastodon.")
+        return MastodonEngagementSource(channel["instance"], config.mastodon_access_token())
 
     raise ValueError(f"no engagement source for platform: {platform!r}")

@@ -30,6 +30,12 @@ def bluesky_app_password() -> str:
     return os.environ.get("BLUESKY_APP_PASSWORD", "")
 
 
+def mastodon_access_token() -> str:
+    """One secret per Mastodon channel: the token identifies the account (verify_credentials), so
+    there is no handle to configure. The instance base URL is channel config, not a secret."""
+    return os.environ.get("MASTODON_ACCESS_TOKEN", "")
+
+
 def anthropic_api_key() -> str:
     return os.environ.get("ANTHROPIC_API_KEY", "")
 

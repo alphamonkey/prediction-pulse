@@ -11,17 +11,27 @@ from pulse import channels, config
 from pulse.engage.base import Engager, TargetSource
 from pulse.engage.bluesky import BlueskySignalEngager
 from pulse.engage.dryrun import DryRunEngager
+from pulse.engage.mastodon import MastodonSignalEngager, MastodonTagSource
+from pulse.engage.null import NullTargetSource
 from pulse.engage.search import TopicalSearchSource
 
 
 def make_target_source(channel: dict, policy) -> TargetSource:
     """Build the inbound target source for a channel. Read-only, so NOT live-gated — dryrun still
-    finds targets so you can preview what it *would* engage."""
+    finds targets so you can preview what it *would* engage.
+
+    A known platform with no source of its own gets a NullTargetSource rather than an exception:
+    EngageJob loops a persona's channels, so raising here would take a live persona's whole engage
+    job down the moment a new channel is added.
+    """
     platform = channels.validate_channel(channel)["platform"]
     if platform == "bluesky":
         return TopicalSearchSource(channels.handle_for(channel), config.bluesky_app_password(),
                                    queries=policy.queries)
-    raise ValueError(f"no engage target source for platform: {platform!r}")
+    if platform == "mastodon":
+        return MastodonTagSource(channel["instance"], config.mastodon_access_token(),
+                                 queries=policy.queries)
+    return NullTargetSource(platform)
 
 
 def make_engager(channel: dict) -> Engager:
@@ -35,4 +45,9 @@ def make_engager(channel: dict) -> Engager:
             raise RuntimeError("BLUESKY_APP_PASSWORD not set — cannot engage live on Bluesky.")
         return BlueskySignalEngager(channels.handle_for(channel), config.bluesky_app_password())
 
-    raise ValueError(f"unknown engage platform: {platform!r}")  # pragma: no cover
+    if platform == "mastodon":
+        if not config.mastodon_access_token():
+            raise RuntimeError("MASTODON_ACCESS_TOKEN not set — cannot engage live on Mastodon.")
+        return MastodonSignalEngager(channel["instance"], config.mastodon_access_token())
+
+    raise ValueError(f"no engager for platform: {platform!r}")  # pragma: no cover
