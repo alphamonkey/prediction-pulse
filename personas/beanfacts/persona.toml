@@ -30,6 +30,9 @@ topics = [
 
 [pipeline.draft]
 interval = 3630
+limit = 3   # generator source only ever seeds ~1 candidate/cycle (6/day cap, see bucket above);
+            # set explicitly so a backlog burst (e.g. after downtime) can't fall back to the
+            # unrelated MAX_POSTS_PER_DAY default (9) and spend more than this persona needs
 
 [pipeline.publish]
 interval = 14400

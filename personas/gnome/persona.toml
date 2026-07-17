@@ -24,6 +24,8 @@ interval = 900
 
 [pipeline.draft]
 interval = 3600
+limit = 3   # matches the retired drafter.service's --limit 3; the [pipeline.draft] default (9)
+            # silently tripled this persona's Claude spend for 2026-07-07..07-16 until restored
 
 [pipeline.publish]
 interval = 14400
