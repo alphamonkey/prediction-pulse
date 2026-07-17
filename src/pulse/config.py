@@ -81,6 +81,11 @@ NEW_MARKET_DEBUT_WINDOW = 6              # a market is "new" while it has <= thi
 MAX_RECENT_SNAPSHOTS = 64                # cap loaded per market (INVARIANT: >> DEBUT_WINDOW)
 
 # ── Cadence ──
+# Two DIFFERENT caps. POSTS_PER_CYCLE bounds one publish cycle; MAX_POSTS_PER_DAY bounds the day.
+# Keep them distinct: when the per-cycle limit defaulted to the daily cap, the day's first cycle
+# posted the entire quota back-to-back (a 9-post burst inside one second) and the interval, jitter
+# and windows below became decorative.
+POSTS_PER_CYCLE = 1          # posts per publish cycle -> spaced by the publish interval
 MAX_POSTS_PER_DAY = 9        # rate cap so the feed stays signal, not spam
 DEFAULT_INTERVAL_SECONDS = 900  # `pulse run` poll cadence: 15 min
 DRAFT_INTERVAL_SECONDS = 3600    # draft cadence: 1 h (matches the drafter service)
