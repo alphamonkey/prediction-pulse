@@ -39,6 +39,16 @@ def test_bluesky_creds_default_empty(monkeypatch):
     assert config.bluesky_app_password() == ""
 
 
+def test_mastodon_token_reflects_env(monkeypatch):
+    monkeypatch.setenv("MASTODON_ACCESS_TOKEN", "tok-123")
+    assert config.mastodon_access_token() == "tok-123"
+
+
+def test_mastodon_token_defaults_empty(monkeypatch):
+    monkeypatch.delenv("MASTODON_ACCESS_TOKEN", raising=False)
+    assert config.mastodon_access_token() == ""
+
+
 def test_anthropic_api_key_reflects_env(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     assert config.anthropic_api_key() == "sk-test"

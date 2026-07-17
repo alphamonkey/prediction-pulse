@@ -7,6 +7,7 @@ import pytest
 from pulse.metrics.base import AccountStats, MetricKind, PostEngagement
 from pulse.metrics.collect import MetricsJob, MetricsReport, collect_once
 from pulse.metrics.dryrun import NullEngagementSource
+from pulse.persona import Persona
 from pulse.publish.base import PostResult
 from pulse.scheduler.base import Job
 from pulse.store.db import Database
@@ -74,9 +75,62 @@ def test_collect_once_inert_source_writes_nothing(db):
     assert db.conn.execute("SELECT COUNT(*) FROM post_metrics").fetchone()[0] == 0
 
 
-def test_metrics_job_is_a_named_job(db):
-    job = MetricsJob(db, FakeSource(), handle="h", post_limit=50)
+# ── MetricsJob: a per-channel loop, like PublishJob and EngageJob ──
+# collect_once (above) keeps its exact single-source signature — that seam is untouched, which is
+# what lets the tests above stand unchanged.
+
+class _MastoSource:
+    name = "mastodon"
+    supported_metrics = frozenset({MetricKind.LIKES})
+
+    def __init__(self):
+        self.handles = []
+
+    def account(self, handle):
+        self.handles.append(handle)
+        return AccountStats(followers=400, follows=20, posts=30, fetched_at=_NOW)
+
+    def engagement(self, uris):
+        return [PostEngagement(u, "mastodon", _NOW, {MetricKind.LIKES: 9}) for u in uris]
+
+
+def _persona(*channels):
+    return Persona(name="gnome", voice="v", channels=list(channels))
+
+
+def test_metrics_job_is_a_named_job(db, monkeypatch):
+    monkeypatch.setattr("pulse.metrics.collect.make_engagement_source",
+                        lambda channel: FakeSource())
+    job = MetricsJob(db, _persona({"platform": "bluesky", "handle": "h"}), post_limit=50)
     assert job.name == "metrics"
     assert isinstance(job, Job)
-    report = job.run()
-    assert report.followers == 50
+    assert job.run().followers == 50
+
+
+def test_metrics_job_collects_each_channel_with_that_channels_own_handle(db, monkeypatch):
+    db.insert_post("k2", "gnome",
+                   PostResult(channel="mastodon", posted=True, uri="108", cid=None, text="hi"))
+    bsky, masto = FakeSource(), _MastoSource()
+    monkeypatch.setattr("pulse.metrics.collect.make_engagement_source",
+                        lambda channel: masto if channel["platform"] == "mastodon" else bsky)
+
+    persona = _persona({"platform": "bluesky", "handle": "gnome.bsky.social"},
+                       {"platform": "mastodon", "instance": "https://m.example",
+                        "handle": "@gnome@m.example"})
+    report = MetricsJob(db, persona, post_limit=50).run()
+
+    assert masto.handles == ["@gnome@m.example"]   # not the Bluesky handle
+    assert report.by_platform == {"bluesky": 50, "mastodon": 400}
+    assert report.posts_measured == 2              # one post per channel
+    # One account snapshot per platform, each attributed to its own account.
+    rows = db.conn.execute(
+        "SELECT platform, followers FROM account_snapshots ORDER BY platform").fetchall()
+    assert [(r["platform"], r["followers"]) for r in rows] == [("bluesky", 50), ("mastodon", 400)]
+
+
+def test_metrics_job_with_no_channels_collects_nothing(db):
+    """It used to fall back to the global BLUESKY_HANDLE and collect anyway — for an account the
+    persona never declared."""
+    report = MetricsJob(db, _persona(), post_limit=50).run()
+    assert report == MetricsReport()
+    assert db.conn.execute("SELECT COUNT(*) FROM account_snapshots").fetchone()[0] == 0

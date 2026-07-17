@@ -22,8 +22,8 @@ def client(tmp_path, monkeypatch):
     path = tmp_path / "dash.db"
     db = Database(path)
     db.connect()
-    db.insert_account_snapshot(AccountStats(100, 50, 10, _NOW - timedelta(days=2)))
-    db.insert_account_snapshot(AccountStats(120, 60, 15, _NOW))
+    db.insert_account_snapshot(AccountStats(100, 50, 10, _NOW - timedelta(days=2)), platform="bluesky")
+    db.insert_account_snapshot(AccountStats(120, 60, 15, _NOW), platform="bluesky")
     db.insert_post("k1", "gnome",
                    PostResult(channel="bluesky", posted=True, uri="at://1", cid="c", text="alpha"))
     db.upsert_post_metrics([PostEngagement("at://1", "bluesky", _NOW,
@@ -42,6 +42,15 @@ def test_kpms_endpoint(client):
     assert k["applause"] == 10.0
     assert k["conversation"] == 2.0
     assert k["total_engagements"] == 12
+
+
+def test_platforms_endpoint_and_platform_scoping(client):
+    assert client.get("/api/platforms").json() == ["bluesky"]
+    # Explicit ?platform= agrees with the default lens for a single-channel persona...
+    assert client.get("/api/kpms?platform=bluesky").json()["followers"] == 120
+    # ... and a platform with no snapshots reads as empty rather than borrowing another's numbers.
+    assert client.get("/api/kpms?platform=mastodon").json()["followers"] is None
+    assert client.get("/api/followers?platform=mastodon").json() == []
 
 
 def test_followers_endpoint(client):

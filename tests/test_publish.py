@@ -67,6 +67,28 @@ def test_bluesky_publisher_caps_length():
     assert len(client.sent[0]) <= config.BLUESKY_MAX_GRAPHEMES
 
 
+# ── max_length is a capability of the publisher, not a global constant ──
+
+def test_publishers_declare_their_own_max_length():
+    assert BlueskyPublisher("h", "p").max_length == config.BLUESKY_MAX_GRAPHEMES
+    assert DryRunPublisher("bluesky").max_length == config.BLUESKY_MAX_GRAPHEMES
+
+
+def test_dryrun_publisher_does_not_impose_blueskys_limit_on_another_channel():
+    """It used to truncate every channel at Bluesky's 300 — so a dryrun of a 500-char Mastodon post
+    previewed copy that live Mastodon would never have trimmed."""
+    pub = DryRunPublisher("mastodon", max_length=500)
+    result = pub.publish(_draft("z" * 400), _PERSONA)
+    assert len(result.text) == 400  # untouched: it fits Mastodon
+
+
+def test_make_publisher_gives_dryrun_the_channels_limit(monkeypatch):
+    monkeypatch.setenv("PULSE_MODE", "dryrun")
+    pub = make_publisher({"platform": "mastodon", "instance": "https://mastodon.social"})
+    assert isinstance(pub, DryRunPublisher)
+    assert pub.max_length == 500
+
+
 def test_bluesky_publisher_logs_in_once():
     client = FakeBskyClient()
     pub = BlueskyPublisher("h", "p", client=client)

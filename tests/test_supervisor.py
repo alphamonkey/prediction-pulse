@@ -123,18 +123,13 @@ def test_prune_is_always_scheduled(db):
     assert {e.name for e in entries} == {"metrics", "prune"}
 
 
-def test_metrics_handle_comes_from_persona_channel(db, monkeypatch):
+def test_metrics_job_gets_the_persona_and_loops_its_channels(db, monkeypatch):
+    """MetricsJob is built from the persona, not a hard-coded "bluesky" — so a persona's second
+    channel is measured too, with its own handle (see test_metrics_collect)."""
     monkeypatch.setenv("BLUESKY_HANDLE", "global.bsky.social")
     entries = build_supervised(_persona({"metrics": {}}), db)
     metrics = next(e for e in entries if e.name == "metrics")
-    assert metrics.job._handle == "testp.bsky.social"
-
-
-def test_metrics_handle_falls_back_to_global(db, monkeypatch):
-    monkeypatch.setenv("BLUESKY_HANDLE", "global.bsky.social")
-    entries = build_supervised(_persona({"metrics": {}}, channels=[]), db)
-    metrics = next(e for e in entries if e.name == "metrics")
-    assert metrics.job._handle == "global.bsky.social"
+    assert metrics.job._persona.channel_handle("bluesky") == "testp.bsky.social"
 
 
 def test_engage_policy_built_from_spec(db):

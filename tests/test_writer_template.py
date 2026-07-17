@@ -4,11 +4,13 @@ from datetime import datetime, timezone
 
 from pulse.models import Event, ValueKind
 from pulse.persona import Persona
-from pulse.writer.base import Draft, Writer, enforce_bluesky_length
+from pulse.writer.base import Draft, Writer, enforce_length
 from pulse.writer.template import TemplateWriter
 
 _T = datetime(2026, 6, 24, 12, 0, 0, tzinfo=timezone.utc)
 _PERSONA = Persona(name="example", voice="be punchy")
+_BSKY = {"platform": "bluesky"}
+_MASTO = {"platform": "mastodon", "instance": "https://mastodon.social"}
 
 
 def _event(headline="KXPRES: odds 45% -> 55% (+10pts)"):
@@ -21,13 +23,12 @@ def _event(headline="KXPRES: odds 45% -> 55% (+10pts)"):
 
 
 def test_enforce_length_trims_to_limit():
-    long = "x" * 400
-    out = enforce_bluesky_length(long)
-    assert len(out) <= 300
+    assert len(enforce_length("x" * 400, 300)) <= 300
+    assert len(enforce_length("x" * 400, 500)) <= 500
 
 
 def test_enforce_length_leaves_short_text():
-    assert enforce_bluesky_length("short") == "short"
+    assert enforce_length("short", 300) == "short"
 
 
 def test_template_writer_is_a_writer():
@@ -50,3 +51,19 @@ def test_template_writer_enforces_length():
     ev = _event(headline="y" * 400)
     draft = TemplateWriter().write(ev, _PERSONA)
     assert len(draft.text) <= 300
+
+
+def test_writer_targets_the_smallest_channel_the_persona_publishes_to():
+    """One draft is fanned out to every channel, so it's written to the TIGHTEST limit. Otherwise
+    the writer uses Mastodon's 500 and the Bluesky publisher then truncates it with an ellipsis."""
+    ev = _event(headline="y" * 600)
+    persona = Persona(name="gnome", voice="v", channels=[_BSKY, _MASTO])
+    assert persona.draft_max_length() == 300
+    assert len(TemplateWriter().write(ev, persona).text) <= 300
+
+
+def test_a_mastodon_only_persona_gets_mastodons_headroom():
+    ev = _event(headline="y" * 600)
+    persona = Persona(name="masto", voice="v", channels=[_MASTO])
+    assert persona.draft_max_length() == 500
+    assert 300 < len(TemplateWriter().write(ev, persona).text) <= 500

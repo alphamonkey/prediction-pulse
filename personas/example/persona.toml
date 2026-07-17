@@ -1,12 +1,33 @@
 # Example persona — replace with your own brand. The writer uses system_prompt.md (the voice);
-# the publisher (later) will use `channels`. Identity fields below describe the account.
+# the fields below are identity metadata. NOTE: the pipeline does NOT push display_name/bio/avatar
+# to any platform — set those on the account itself.
 display_name = "Prediction Pulse"
 handle = "example.bsky.social"
 avatar = "avatar.png"
 bio = "Faceless, data-driven prediction-market moves. Not financial advice."
 
-# Platform accounts this persona posts to. Filled in / used by the publisher chunk.
-channels = []
+# ── Channels: the accounts this persona publishes/engages/measures on ──────────────────────────
+# Declare one [[channels]] block per account. Publish, engage and metrics all loop these, so
+# adding a channel here (plus its secret in secrets/<persona>.env) is the WHOLE change — no code.
+# Blocks are validated at load: an unknown platform or a missing required key fails immediately.
+#
+#   bluesky   keys: handle (optional; falls back to BLUESKY_HANDLE)
+#             secret: BLUESKY_APP_PASSWORD
+#   mastodon  keys: instance (REQUIRED — no default), handle (optional), max_length (optional;
+#             instances configure their own limit)
+#             secret: MASTODON_ACCESS_TOKEN  (identifies the account — there is no handle to set)
+#
+# One draft is written per event and fanned out to every channel, so it is sized to the SMALLEST
+# limit among them (Bluesky 300 + Mastodon 500 => 300). Say your target length in system_prompt.md.
+
+[[channels]]
+platform = "bluesky"
+handle = "example.bsky.social"
+
+# [[channels]]
+# platform = "mastodon"
+# instance = "https://mastodon.social"   # any Mastodon-compatible server (Pleroma/Akkoma/GoToSocial)
+# handle = "@example@mastodon.social"    # optional; used to skip the persona's own posts in engage
 
 # ── The stack this persona runs (read by `pulse supervise <name>`) ─────────────────────────────
 # A job runs iff its [pipeline.<job>] section is present; every field is optional and falls back
@@ -41,7 +62,7 @@ jitter = 600
 # default windows. Outward actions only fire inside these windows (dayparting).
 windows = [["07:00", "10:00"], ["12:00", "14:00"], ["17:00", "22:00"]]
 tz = "America/New_York"
-# limit = 9                       # max posts per run (also capped by the daily limit)
+# limit = 1                       # max posts per CYCLE (the daily cap is config.MAX_POSTS_PER_DAY)
 
 [pipeline.engage]
 interval = 3600

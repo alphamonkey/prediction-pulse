@@ -8,10 +8,12 @@ no supported metrics (the Null source outside live mode) is inert, so the cycle 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pulse import config
 from pulse.metrics.base import EngagementSource
+from pulse.metrics.factory import make_engagement_source
+from pulse.persona import Persona
 from pulse.store.db import Database
 
 log = logging.getLogger("pulse")
@@ -19,8 +21,9 @@ log = logging.getLogger("pulse")
 
 @dataclass
 class MetricsReport:
-    followers: int | None = None
+    followers: int | None = None          # summed across channels (the persona's total audience)
     posts_measured: int = 0
+    by_platform: dict = field(default_factory=dict)  # platform -> followers, kept separate
 
 
 def collect_once(db: Database, source: EngagementSource, *, handle: str,
@@ -31,7 +34,7 @@ def collect_once(db: Database, source: EngagementSource, *, handle: str,
         return MetricsReport()
 
     stats = source.account(handle)
-    db.insert_account_snapshot(stats)
+    db.insert_account_snapshot(stats, platform=source.name)
     uris = db.recent_post_uris(source.name, post_limit)
     engagement = source.engagement(uris)
     db.upsert_post_metrics(engagement)
@@ -41,17 +44,30 @@ def collect_once(db: Database, source: EngagementSource, *, handle: str,
 
 
 class MetricsJob:
-    """The metrics collect cycle as a schedulable Job."""
+    """The metrics collect cycle as a schedulable Job — loops a persona's channels.
+
+    A sibling of PublishJob and EngageJob, which have always looped. This one used to be built with
+    a hard-coded "bluesky", so a persona's other accounts were simply never measured.
+    """
 
     name = "metrics"
 
-    def __init__(self, db: Database, source: EngagementSource, *, handle: str,
-                 post_limit: int) -> None:
+    def __init__(self, db: Database, persona: Persona, *, post_limit: int) -> None:
         self._db = db
-        self._source = source
-        self._handle = handle
+        self._persona = persona
         self._post_limit = post_limit
 
     def run(self) -> MetricsReport:
-        return collect_once(self._db, self._source, handle=self._handle,
-                            post_limit=self._post_limit)
+        agg = MetricsReport()
+        if not self._persona.channels:
+            log.warning("persona %s has no channels — nothing to collect", self._persona.name)
+        for channel in self._persona.channels:
+            platform = channel["platform"]
+            r = collect_once(self._db, make_engagement_source(channel),
+                             handle=self._persona.channel_handle(platform),
+                             post_limit=self._post_limit)
+            agg.posts_measured += r.posts_measured
+            if r.followers is not None:
+                agg.followers = (agg.followers or 0) + r.followers
+                agg.by_platform[platform] = r.followers
+        return agg

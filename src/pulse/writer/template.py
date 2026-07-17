@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pulse.models import Event
 from pulse.persona import Persona
-from pulse.writer.base import Draft, enforce_bluesky_length
+from pulse.writer.base import Draft, enforce_length
 
 
 class TemplateWriter:
@@ -20,5 +20,5 @@ class TemplateWriter:
         return Draft(
             event_dedup_key=event.dedup_key,
             persona=persona.name,
-            text=enforce_bluesky_length(event.headline),
+            text=enforce_length(event.headline, persona.draft_max_length()),
         )

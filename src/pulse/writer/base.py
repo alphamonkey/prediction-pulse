@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from pulse.config import BLUESKY_MAX_GRAPHEMES
 from pulse.models import Event, _now
 from pulse.persona import Persona
 
@@ -36,8 +35,12 @@ class Writer(Protocol):
         ...
 
 
-def enforce_bluesky_length(text: str, limit: int = BLUESKY_MAX_GRAPHEMES) -> str:
-    """Safety net so a draft never exceeds the platform limit. Trims with an ellipsis."""
+def enforce_length(text: str, limit: int) -> str:
+    """Safety net so a draft never exceeds a channel's limit. Trims with an ellipsis.
+
+    `limit` is explicit because it belongs to the channel, not to this module: the writer passes
+    the persona's tightest channel, each publisher passes its own.
+    """
     text = text.strip()
     if len(text) <= limit:
         return text

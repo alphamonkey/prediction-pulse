@@ -94,7 +94,7 @@ def test_null_source_no_network_no_metrics():
 
 def test_factory_dryrun_returns_null(monkeypatch):
     monkeypatch.setenv("PULSE_MODE", "dryrun")
-    src = make_engagement_source("bluesky")
+    src = make_engagement_source({"platform": "bluesky"})
     assert isinstance(src, NullEngagementSource)
     assert src.name == "bluesky"
 
@@ -103,17 +103,17 @@ def test_factory_live_returns_bluesky(monkeypatch):
     monkeypatch.setenv("PULSE_MODE", "live")
     monkeypatch.setenv("BLUESKY_APP_PASSWORD", "pw")
     monkeypatch.setenv("BLUESKY_HANDLE", "h.bsky.social")
-    assert isinstance(make_engagement_source("bluesky"), BlueskyEngagementSource)
+    assert isinstance(make_engagement_source({"platform": "bluesky"}), BlueskyEngagementSource)
 
 
 def test_factory_live_without_password_raises(monkeypatch):
     monkeypatch.setenv("PULSE_MODE", "live")
     monkeypatch.setenv("BLUESKY_APP_PASSWORD", "")
     with pytest.raises(RuntimeError):
-        make_engagement_source("bluesky")
+        make_engagement_source({"platform": "bluesky"})
 
 
 def test_factory_unknown_platform_raises(monkeypatch):
     monkeypatch.setenv("PULSE_MODE", "live")
     with pytest.raises(ValueError):
-        make_engagement_source("myspace")
+        make_engagement_source({"platform": "myspace"})

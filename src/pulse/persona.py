@@ -14,6 +14,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from pulse.channels import validate_channels
 from pulse.config import PERSONAS_DIR
 from pulse.pipeline import PipelineSpec, parse_pipeline
 
@@ -30,13 +31,19 @@ class Persona:
     pipeline: PipelineSpec = field(default_factory=PipelineSpec)  # the stack this persona runs
 
     def channel_handle(self, platform: str = "bluesky") -> str:
-        """The persona's own handle on a platform, falling back to the global credential
-        handle (how PublishJob/MetricsJob decide which account they speak for)."""
+        """The account this persona acts as on `platform` — how publish/engage/metrics decide who
+        they speak for. Falls back to that platform's OWN credential default (never another's)."""
+        from pulse import channels
         for channel in self.channels:
-            if channel.get("platform") == platform and channel.get("handle"):
-                return channel["handle"]
-        from pulse import config
-        return config.bluesky_handle()
+            if channel.get("platform") == platform:
+                return channels.handle_for(channel)
+        return channels.channel_spec(platform).handle_default()
+
+    def draft_max_length(self) -> int:
+        """How long one draft may be: the tightest limit among the channels it will be fanned out
+        to. A persona with no channels keeps Bluesky's historical limit."""
+        from pulse import channels
+        return channels.draft_max_length(self.channels)
 
 
 def load_persona(name: str, *, root: str | Path = PERSONAS_DIR) -> Persona:
@@ -51,6 +58,8 @@ def load_persona(name: str, *, root: str | Path = PERSONAS_DIR) -> Persona:
         handle=meta.get("handle"),
         avatar=meta.get("avatar"),
         bio=meta.get("bio"),
-        channels=list(meta.get("channels", [])),
+        # Strict, like parse_pipeline below: an operator typo fails here, at load, rather than
+        # hours later when a publish cycle first reaches the factory.
+        channels=validate_channels(meta.get("channels", [])),
         pipeline=parse_pipeline(meta.get("pipeline", {})),
     )

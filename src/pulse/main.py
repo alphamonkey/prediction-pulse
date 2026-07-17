@@ -25,7 +25,6 @@ from pulse.drafter import DraftJob, draft_once
 from pulse.engage.base import SignalKind
 from pulse.engager import EngageJob, EngagePolicy
 from pulse.metrics.collect import MetricsJob
-from pulse.metrics.factory import make_engagement_source
 from pulse.persona import load_persona
 from pulse.pipeline import SourceSpec
 from pulse.poller import PollJob
@@ -120,12 +119,10 @@ def _run_metrics(post_limit: int, persona_name: str, interval: int, max_iteratio
     persona = load_persona(persona_name)
     db = _open_db(persona_name)
     try:
-        source = make_engagement_source("bluesky")
-        job = MetricsJob(db, source, handle=persona.channel_handle("bluesky"),
-                         post_limit=post_limit)
+        job = MetricsJob(db, persona, post_limit=post_limit)
         if interval > 0:
-            log.info("collecting metrics every %ds (platform=%s, mode=%s)",
-                     interval, source.name, config.pulse_mode())
+            log.info("collecting metrics every %ds (persona=%s, mode=%s)",
+                     interval, persona.name, config.pulse_mode())
             _run_scheduled(job, interval, max_iterations, jitter)
         else:
             job.run()

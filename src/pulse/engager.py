@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from pulse import config
+from pulse import channels
 from pulse.engage.base import Engager, SignalKind, TargetSource
 from pulse.engage.factory import make_engager, make_target_source
 from pulse.engage.filter import filter_targets
@@ -108,7 +108,7 @@ class EngageJob:
         for channel in self._persona.channels:
             source = make_target_source(channel, self._policy)
             engager = make_engager(channel)
-            self_handle = channel.get("handle") or config.bluesky_handle()
+            self_handle = channels.handle_for(channel)
             r = engage_once(self._db, source, engager, self._persona, self._policy,
                             limit=self._limit, self_handles=(self_handle,))
             agg.targets += r.targets

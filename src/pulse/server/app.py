@@ -94,15 +94,24 @@ def create_app(trend_client: BlueskyTrendClient | None = None) -> FastAPI:
         with _db(persona) as (_, db):
             return JSONResponse(db.get_drafts(limit))
 
+    # `platform` selects which channel's scorecard/series to read; it defaults to the persona's
+    # most recently snapshotted one, so a single-channel persona needs no query param.
     @app.get("/api/kpms")
-    def kpms(persona: str | None = None) -> JSONResponse:
+    def kpms(persona: str | None = None, platform: str | None = None) -> JSONResponse:
         with _db(persona) as (_, db):
-            return JSONResponse(db.kpms())
+            return JSONResponse(db.kpms(platform=platform))
 
     @app.get("/api/followers")
-    def followers(days: int = 30, persona: str | None = None) -> JSONResponse:
+    def followers(days: int = 30, persona: str | None = None,
+                  platform: str | None = None) -> JSONResponse:
         with _db(persona) as (_, db):
-            return JSONResponse(db.follower_series(days))
+            return JSONResponse(db.follower_series(days, platform=platform))
+
+    @app.get("/api/platforms")
+    def platforms(persona: str | None = None) -> JSONResponse:
+        """Which platforms this persona has metrics for — lets the UI offer a channel picker."""
+        with _db(persona) as (_, db):
+            return JSONResponse(db.follower_platforms())
 
     @app.get("/api/top-posts")
     def top_posts(limit: int = 5, persona: str | None = None) -> JSONResponse:

@@ -8,15 +8,17 @@ from __future__ import annotations
 
 import logging
 
+from pulse import config
 from pulse.persona import Persona
 from pulse.publish.base import PostResult
-from pulse.writer.base import Draft, enforce_bluesky_length
+from pulse.writer.base import Draft, enforce_length
 
 log = logging.getLogger("pulse")
 
 
 class BlueskyPublisher:
     name = "bluesky"
+    max_length = config.BLUESKY_MAX_GRAPHEMES
 
     def __init__(self, handle: str, app_password: str, *, client=None) -> None:
         self._handle = handle
@@ -36,6 +38,6 @@ class BlueskyPublisher:
 
     def publish(self, draft: Draft, persona: Persona) -> PostResult:
         client = self._ensure_login()
-        text = enforce_bluesky_length(draft.text)
+        text = enforce_length(draft.text, self.max_length)
         resp = client.send_post(text)
         return PostResult(channel=self.name, posted=True, uri=resp.uri, cid=resp.cid, text=text)

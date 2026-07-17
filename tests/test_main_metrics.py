@@ -1,11 +1,17 @@
-"""CLI wiring tests for `pulse metrics` (collaborators faked, mirrors the publish-command tests)."""
+"""CLI wiring tests for `pulse metrics` (collaborators faked, mirrors the publish-command tests).
+
+MetricsJob now takes the whole persona and loops its channels (like PublishJob/EngageJob), so the
+CLI's job is just to hand it the right persona and the right DB — which handle each channel's
+source gets is MetricsJob's business, tested in test_metrics_collect.py.
+"""
 
 from types import SimpleNamespace
 
 from pulse import config, main
+from pulse.persona import Persona
 
 
-def _metrics_fakes(monkeypatch, calls):
+def _fake_db(monkeypatch, calls):
     class FakeDB:
         def __init__(self, *a, **k):
             pass
@@ -17,37 +23,35 @@ def _metrics_fakes(monkeypatch, calls):
             calls["closed"] = True
 
     monkeypatch.setattr(main, "Database", FakeDB)
-    monkeypatch.setattr(main, "make_engagement_source",
-                        lambda platform: SimpleNamespace(name=platform))
+
+
+def _fake_persona(monkeypatch, channels):
+    monkeypatch.setattr(main, "load_persona",
+                        lambda name: Persona(name=name, voice="v", channels=channels))
 
 
 def test_metrics_one_shot(monkeypatch):
     calls = {}
-    _metrics_fakes(monkeypatch, calls)
+    _fake_db(monkeypatch, calls)
+    _fake_persona(monkeypatch, [{"platform": "bluesky", "handle": "gnome.bsky.social"}])
 
     class FakeJob:
         name = "metrics"
 
-        def __init__(self, db, source, *, handle, post_limit):
-            calls["platform"] = source.name
-            calls["handle"] = handle
+        def __init__(self, db, persona, *, post_limit):
+            calls["persona"] = persona.name
+            calls["channels"] = persona.channels
             calls["post_limit"] = post_limit
 
         def run(self):
             calls["ran"] = True
 
     monkeypatch.setattr(main, "MetricsJob", FakeJob)
-    monkeypatch.setenv("BLUESKY_HANDLE", "gnome.bsky.social")
-    # A persona with no channels falls back to the global handle (and pins the test
-    # against whatever PULSE_PERSONA the ambient .env selects).
-    from pulse.persona import Persona
-    monkeypatch.setattr(main, "load_persona",
-                        lambda name: Persona(name=name, voice="v", channels=[]))
 
-    main.cli(["metrics", "--limit", "7"])
+    main.cli(["metrics", "--persona", "gnome", "--limit", "7"])
 
-    assert calls["platform"] == "bluesky"
-    assert calls["handle"] == "gnome.bsky.social"
+    assert calls["persona"] == "gnome"
+    assert calls["channels"] == [{"platform": "bluesky", "handle": "gnome.bsky.social"}]
     assert calls["post_limit"] == 7
     assert calls["ran"] is True
     assert calls["closed"] is True
@@ -55,9 +59,10 @@ def test_metrics_one_shot(monkeypatch):
 
 def test_metrics_defaults_limit_from_config(monkeypatch):
     calls = {}
-    _metrics_fakes(monkeypatch, calls)
+    _fake_db(monkeypatch, calls)
+    _fake_persona(monkeypatch, [])
     monkeypatch.setattr(main, "MetricsJob",
-                        lambda db, source, *, handle, post_limit: SimpleNamespace(
+                        lambda db, persona, *, post_limit: SimpleNamespace(
                             name="metrics", run=lambda: calls.update(post_limit=post_limit)))
 
     main.cli(["metrics"])
@@ -66,12 +71,10 @@ def test_metrics_defaults_limit_from_config(monkeypatch):
 
 def test_metrics_loop_drives_scheduler(monkeypatch):
     calls = {}
-    _metrics_fakes(monkeypatch, calls)
-
-    from pulse.metrics.collect import MetricsJob
-
+    _fake_db(monkeypatch, calls)
+    _fake_persona(monkeypatch, [])
     monkeypatch.setattr(main, "MetricsJob",
-                        lambda db, source, *, handle, post_limit: SimpleNamespace(name="metrics"))
+                        lambda db, persona, *, post_limit: SimpleNamespace(name="metrics"))
 
     class FakeScheduler:
         def __init__(self, job, interval_seconds, *, max_iterations=0, jitter_seconds=0):
@@ -94,9 +97,8 @@ def test_metrics_loop_drives_scheduler(monkeypatch):
     assert calls["closed"] is True
 
 
-def test_metrics_uses_the_personas_channel_handle_and_db(monkeypatch):
+def test_metrics_opens_the_personas_own_db(monkeypatch):
     calls = {}
-    _metrics_fakes(monkeypatch, calls)
 
     class PathDB:
         def __init__(self, path, *a, **k):
@@ -109,18 +111,12 @@ def test_metrics_uses_the_personas_channel_handle_and_db(monkeypatch):
             pass
 
     monkeypatch.setattr(main, "Database", PathDB)
-    monkeypatch.setattr(
-        main, "MetricsJob",
-        lambda db, source, *, handle, post_limit: SimpleNamespace(
-            name="metrics", run=lambda: calls.update(handle=handle)))
-    from pulse.persona import Persona
-    monkeypatch.setattr(main, "load_persona", lambda name: Persona(
-        name=name, voice="v",
-        channels=[{"platform": "bluesky", "handle": f"{name}.bsky.social"}]))
-    monkeypatch.setenv("BLUESKY_HANDLE", "global.bsky.social")
+    _fake_persona(monkeypatch, [{"platform": "bluesky", "handle": "alpha.bsky.social"}])
+    monkeypatch.setattr(main, "MetricsJob",
+                        lambda db, persona, *, post_limit: SimpleNamespace(
+                            name="metrics", run=lambda: None))
     monkeypatch.delenv("PULSE_DB_PATH", raising=False)
 
     main.cli(["metrics", "--persona", "alpha"])
-    assert calls["handle"] == "alpha.bsky.social"
     assert calls["db_path"] == config.db_path_for("alpha")
     assert calls["db_path"].endswith("alpha.db")

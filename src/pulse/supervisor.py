@@ -26,7 +26,6 @@ from pulse import config
 from pulse.drafter import DraftJob
 from pulse.engager import EngageJob, EngagePolicy
 from pulse.metrics.collect import MetricsJob
-from pulse.metrics.factory import make_engagement_source
 from pulse.persona import Persona
 from pulse.poller import PollJob
 from pulse.pruner import PruneJob
@@ -102,9 +101,7 @@ def build_supervised(
 
     if spec.metrics:
         db = make_db()
-        job = MetricsJob(db, make_engagement_source("bluesky"),
-                         handle=persona.channel_handle("bluesky"),
-                         post_limit=spec.metrics.post_limit)
+        job = MetricsJob(db, persona, post_limit=spec.metrics.post_limit)
         entries.append(SupervisedJob("metrics", job, IntervalScheduler(
             job, spec.metrics.interval,
             max_iterations=max_iterations, jitter_seconds=spec.metrics.jitter), db))

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -77,11 +78,14 @@ CREATE TABLE IF NOT EXISTS posts (
 CREATE TABLE IF NOT EXISTS account_snapshots (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     ts          TEXT NOT NULL,
+    platform    TEXT NOT NULL DEFAULT 'bluesky',
     followers   INTEGER NOT NULL,
     follows     INTEGER NOT NULL,
     posts       INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_account_ts ON account_snapshots(ts);
+-- NB: the (platform, ts) index is created in _migrate(), not here: this script runs BEFORE the
+-- migration, and on a pre-platform DB the column it indexes doesn't exist yet.
 
 -- Per-post engagement, stored TALL (one row per uri+metric) so platforms with different metric
 -- sets need no schema change. Latest-only: re-collecting upserts in place (no time-series).
@@ -117,6 +121,8 @@ PASSIVE_METRICS = frozenset({MetricKind.IMPRESSIONS, MetricKind.VIDEO_VIEWS})
 
 # How long a writer waits for the lock before erroring (poller + drafter share the DB).
 BUSY_TIMEOUT_MS = 60000  # 60s — two writers (poller + drafter) share the DB; ride out contention
+WAL_RETRIES = 12         # see _set_wal: busy_timeout does NOT cover the journal_mode switch
+WAL_RETRY_SLEEP = 0.05
 
 
 class Database:
@@ -128,23 +134,65 @@ class Database:
     def connect(self) -> None:
         self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        # FIRST, before any pragma that can contend: several processes may open this file at once
+        # (a supervisor restarting while a one-shot CLI command runs), and everything below —
+        # the WAL conversion, the schema script, the migration — can need a lock. Without the
+        # timeout already in place, a loser errors immediately instead of waiting its turn.
+        self.conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
         # Born reclaimable: incremental auto_vacuum lets `reclaim()` hand freed pages back to the OS
         # after a prune. MUST precede the first CREATE TABLE to take effect on a fresh DB; on an
         # already-created DB it's inert until a full VACUUM converts it (see `vacuum()`).
         self.conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        # Two writer processes (poller + drafter) share this DB; WAL serializes writers, so make
-        # a writer wait for the lock rather than erroring. Explicit so it doesn't depend on
-        # sqlite3.connect's implicit timeout default.
-        self.conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+        self._set_wal()
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(_SCHEMA)
         self._migrate()
         self.conn.commit()
 
+    def _set_wal(self) -> None:
+        """Switch the file to WAL, retrying by hand on contention.
+
+        `PRAGMA journal_mode` is the one statement busy_timeout can NOT cover: SQLite deliberately
+        does not invoke the busy handler for it, returning SQLITE_BUSY immediately instead. So
+        converting a not-yet-WAL file while another connection holds it open fails outright, no
+        matter how generous the timeout. Once the file IS WAL this is a no-op that needs no lock —
+        which is why it never bit the live DBs, and would only have bitten a brand-new persona
+        whose first connections raced.
+        """
+        assert self.conn is not None
+        for attempt in range(WAL_RETRIES):
+            try:
+                self.conn.execute("PRAGMA journal_mode=WAL")
+                return
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == WAL_RETRIES - 1:
+                    raise
+                time.sleep(WAL_RETRY_SLEEP)  # a racing connection is mid-conversion; it converges
+
     def _migrate(self) -> None:
-        """Additive migrations for DBs created before a column existed."""
-        # No migrations yet; placeholder mirroring kalshi-edge's pattern.
+        """Additive migrations for DBs created before a column existed.
+
+        Must be idempotent AND race-safe: `supervise` opens one Database per job, so half a dozen
+        connections run this concurrently on restart. The PRAGMA check is not atomic with the ALTER,
+        so the losers of the race must also swallow "duplicate column".
+        """
+        assert self.conn is not None
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(account_snapshots)")}
+        if "platform" not in cols:
+            # ADD COLUMN with a constant default is metadata-only in SQLite — no row is rewritten,
+            # so this is O(1) even on the 100 MB+ live DBs, and the default IS the backfill:
+            # every pre-existing snapshot reads back as 'bluesky'.
+            try:
+                self.conn.execute(
+                    "ALTER TABLE account_snapshots "
+                    "ADD COLUMN platform TEXT NOT NULL DEFAULT 'bluesky'"
+                )
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc).lower():
+                    raise
+        # Outside the branch: a freshly-created DB already has the column but not yet the index.
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_account_platform_ts "
+                          "ON account_snapshots(platform, ts)")
 
     @classmethod
     def connect_readonly(cls, path: str | Path) -> Database:
@@ -507,13 +555,19 @@ class Database:
 
     # ── engagement metrics (collector writes; dashboard reads) ──
 
-    def insert_account_snapshot(self, stats: AccountStats) -> None:
-        """Append one account-level snapshot (followers/follows/posts) for the growth series."""
+    def insert_account_snapshot(self, stats: AccountStats, *, platform: str) -> None:
+        """Append one account-level snapshot (followers/follows/posts) for the growth series.
+
+        `platform` is required, not defaulted: a persona's accounts on two platforms have entirely
+        different follower counts, and silently merging them yields a series describing neither.
+        """
         assert self.conn is not None
         with self._lock:
             self.conn.execute(
-                "INSERT INTO account_snapshots (ts, followers, follows, posts) VALUES (?, ?, ?, ?)",
-                (stats.fetched_at.isoformat(), stats.followers, stats.follows, stats.posts),
+                "INSERT INTO account_snapshots (ts, platform, followers, follows, posts)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (stats.fetched_at.isoformat(), platform, stats.followers, stats.follows,
+                 stats.posts),
             )
             self.conn.commit()
 
@@ -549,42 +603,74 @@ class Database:
         ).fetchall()
         return [r["uri"] for r in rows]
 
-    def follower_series(self, days: int = 30, *, now: datetime | None = None) -> list[dict]:
-        """Account follower count over the last `days`, ascending by ts — for the growth chart.
+    def follower_platforms(self) -> list[str]:
+        """Platforms this persona has account snapshots for (what the dashboard can chart)."""
+        assert self.conn is not None
+        rows = self.conn.execute(
+            "SELECT DISTINCT platform FROM account_snapshots ORDER BY platform").fetchall()
+        return [r["platform"] for r in rows]
+
+    def _latest_platform(self) -> str | None:
+        """The platform of the most recent snapshot — the default lens for a single-series read."""
+        assert self.conn is not None
+        row = self.conn.execute(
+            "SELECT platform FROM account_snapshots ORDER BY ts DESC LIMIT 1").fetchone()
+        return row["platform"] if row else None
+
+    def follower_series(self, days: int = 30, *, now: datetime | None = None,
+                        platform: str | None = None) -> list[dict]:
+        """One platform's follower count over the last `days`, ascending by ts — the growth chart.
+
+        Always scoped to a single platform: a 9-follower Bluesky account and a 400-follower Mastodon
+        one plotted together produce a sawtooth that describes neither. `platform` defaults to the
+        most recently snapshotted one, so a single-platform persona reads exactly as before.
 
         `now` is injectable so tests can pin the window deterministically (defaults to wall clock).
         """
         assert self.conn is not None
+        platform = platform or self._latest_platform()
+        if platform is None:
+            return []
         cutoff = ((now or _now()) - timedelta(days=days)).isoformat()
         rows = self.conn.execute(
-            "SELECT ts, followers FROM account_snapshots WHERE ts >= ? ORDER BY ts ASC",
-            (cutoff,),
+            "SELECT ts, followers FROM account_snapshots"
+            " WHERE ts >= ? AND platform = ? ORDER BY ts ASC",
+            (cutoff, platform),
         ).fetchall()
         return [{"ts": r["ts"], "followers": r["followers"]} for r in rows]
 
-    def kpms(self, *, now: datetime | None = None) -> dict:
-        """The content scorecard: follower growth + per-post engagement rates over the tall metrics.
+    def kpms(self, *, now: datetime | None = None, platform: str | None = None) -> dict:
+        """The content scorecard for ONE platform: follower growth + per-post engagement rates.
 
-        Returns only metrics actually present, so a richer platform (e.g. one with impressions)
-        surfaces a true engagement rate while Bluesky shows per-post proxies. Empty-DB safe.
-        `now` is injectable so tests can pin the 7-day window deterministically (defaults to wall clock).
+        Scoped to a single platform (defaulting to the most recently snapshotted one) so the
+        followers and the post metrics always describe the same account. Returns only metrics
+        actually present, so a richer platform (e.g. one with impressions) surfaces a true
+        engagement rate while Bluesky shows per-post proxies. Empty-DB safe. `now` is injectable so
+        tests can pin the 7-day window deterministically (defaults to wall clock).
         """
         assert self.conn is not None
         q = self.conn.execute
+        platform = platform or self._latest_platform()
 
-        latest = q("SELECT followers FROM account_snapshots ORDER BY ts DESC LIMIT 1").fetchone()
+        latest = q("SELECT followers FROM account_snapshots WHERE platform = ?"
+                   " ORDER BY ts DESC LIMIT 1", (platform,)).fetchone()
         followers = latest["followers"] if latest else None
         delta = None
         if followers is not None:
             cutoff = ((now or _now()) - timedelta(days=7)).isoformat()
-            base = q("SELECT followers FROM account_snapshots WHERE ts >= ? ORDER BY ts ASC LIMIT 1",
-                     (cutoff,)).fetchone()
+            base = q("SELECT followers FROM account_snapshots WHERE ts >= ? AND platform = ?"
+                     " ORDER BY ts ASC LIMIT 1", (cutoff, platform)).fetchone()
             if base is not None:
                 delta = followers - base["followers"]
 
+        # An empty DB has no platform to scope by — aggregate (which is nothing) rather than
+        # filtering on NULL.
+        where, params = ("WHERE platform = ?", (platform,)) if platform else ("", ())
         totals = {r["metric"]: r["total"] for r in
-                  q("SELECT metric, SUM(value) total FROM post_metrics GROUP BY metric")}
-        posts_measured = q("SELECT COUNT(DISTINCT uri) FROM post_metrics").fetchone()[0]
+                  q(f"SELECT metric, SUM(value) total FROM post_metrics {where} GROUP BY metric",
+                    params)}
+        posts_measured = q(
+            f"SELECT COUNT(DISTINCT uri) FROM post_metrics {where}", params).fetchone()[0]
 
         def avg(metric: MetricKind) -> float:
             return round(totals.get(metric.value, 0) / posts_measured, 2) if posts_measured else 0.0

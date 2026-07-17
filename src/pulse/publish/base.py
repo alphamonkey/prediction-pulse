@@ -29,6 +29,7 @@ class PostResult:
 @runtime_checkable
 class Publisher(Protocol):
     name: str  # the channel/platform, e.g. "bluesky"
+    max_length: int  # the channel's hard post limit — a capability, like Engager.supported_actions
 
     def publish(self, draft: Draft, persona: Persona) -> PostResult:
         ...
